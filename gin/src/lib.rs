@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use juniper::Context;
 
 #[derive(Debug, Clone)]
 pub struct HasOne<T, S, M> {
@@ -14,6 +15,6 @@ pub struct HasMany<S, F, M> {
     model: PhantomData<M>,
 }
 
-pub trait Preloadable {
-    fn preload_children(self_models: Vec<Box<Self>>);
+pub trait Preloadable<C: Context, T> {
+    fn preload_children(self_models: &Vec<T>, context: &C);
 }
