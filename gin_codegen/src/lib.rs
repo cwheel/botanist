@@ -70,19 +70,21 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
                 let preloader_field = Ident::new(format!("{}_preloaded", field).as_ref(), Span::call_site());
 
                 quote! {
-                    pub fn #field(&self, context: &Context, executor: &Executor) -> Vec<#graphql_type> {
+                    pub fn #field(&self, context: &Context, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> Vec<#graphql_type> {
                         if self.#preloader_field.borrow().is_some() {
                             println!("Using existing value!");
                             self.#preloader_field.replace_with(|_| None).unwrap()
                         } else {
                             println!("Not using existing value :(");
-                            let models = #schema::table
+                            let mut models = #schema::table
                                 .filter(#forign_key.eq(&self.id))
+                                .limit(first.unwrap_or(10) as i64)
+                                .offset(offset.unwrap_or(0) as i64)
                                 .load::<#model>(&context.connection)
                                 .unwrap();
 
                             let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                            #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead()); //here?
+                            #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead());
 
                             gql_models
                         }
@@ -214,8 +216,26 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
                             forign_key_ids.sort();
                             forign_key_ids.dedup();
 
+                            let first = look_ahead_selection.argument("first").map(|arg| {
+                                if let LookAheadValue::Scalar(first) = arg.value() {
+                                    first.as_int().unwrap_or(10)
+                                } else {
+                                    10
+                                }
+                            }).unwrap_or(10);
+
+                            let offset = look_ahead_selection.argument("offset").map(|arg| {
+                                if let LookAheadValue::Scalar(offset) = arg.value() {
+                                    offset.as_int().unwrap_or(0)
+                                } else {
+                                    0
+                                }
+                            }).unwrap_or(0);
+
                             let models = #schema::table
                                 .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
+                                .limit(first as i64)
+                                .offset(offset as i64)
                                 .load::<#model>(&context.connection)
                                 .unwrap();
 
@@ -252,7 +272,7 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
         use gin::Preloadable;
         use std::cell::RefCell;
 
-        use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods};
+        use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue};
 
         // Diesel model struct
         #( #attrs )*
