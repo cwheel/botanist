@@ -42,7 +42,13 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
 
     let tokenized_from_fields = common::tokenized_struct_fields_from_ast(&ast, |ident, ty| {
         match common::type_relationship(ty) {
-            common::TypeRelationship::HasMany(_, _, _) => None,
+            common::TypeRelationship::HasMany(_, _, _) => {
+                let preloader_field = Ident::new(format!("{}_preloaded", ident).as_ref(), Span::call_site());
+
+                Some(quote! {
+                    #preloader_field: RefCell::new(None)
+                })
+            },
             common::TypeRelationship::HasOne(_, _, _) => {
                 let preloader_field = Ident::new(format!("{}_preloaded", ident).as_ref(), Span::call_site());
 
@@ -61,18 +67,25 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
         match common::type_relationship(ty) {
             common::TypeRelationship::HasMany(schema, forign_key, model) => {
                 let graphql_type = Ident::new(format!("{}GQL", model.get_ident().unwrap()).as_ref(), Span::call_site());
+                let preloader_field = Ident::new(format!("{}_preloaded", field).as_ref(), Span::call_site());
 
                 quote! {
                     pub fn #field(&self, context: &Context) -> Vec<#graphql_type> {
-                        let models = #schema::table
-                            .filter(#forign_key.eq(&self.id))
-                            .load::<#model>(&context.connection)
-                            .unwrap();
+                        if self.#preloader_field.borrow().is_some() {
+                            println!("Using existing value!");
+                            self.#preloader_field.replace_with(|_| None).unwrap()
+                        } else {
+                            println!("Not using existing value :(");
+                            let models = #schema::table
+                                .filter(#forign_key.eq(&self.id))
+                                .load::<#model>(&context.connection)
+                                .unwrap();
 
-                        let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                        #graphql_type::preload_children(&gql_models, &context);
+                            let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                            #graphql_type::preload_children(&gql_models, &context);
 
-                        gql_models
+                            gql_models
+                        }
                     }
                 }
             },
@@ -107,12 +120,20 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
 
     let preloader_fields = struct_fields.iter().map(|(field, ty, _)| {
         match common::type_relationship(ty) {
-            common::TypeRelationship::HasOne(_, schema, model) => {
+            common::TypeRelationship::HasOne(_, _, model) => {
                 let graphql_type = Ident::new(format!("{}GQL", model.get_ident().unwrap()).as_ref(), Span::call_site());
                 let field_name = Ident::new(format!("{}_preloaded", field).as_ref(), Span::call_site());
 
                 Some(quote! {
                     #field_name: RefCell<Option<#graphql_type>>
+                })
+            },
+            common::TypeRelationship::HasMany(_, _, model) => {
+                let graphql_type = Ident::new(format!("{}GQL", model.get_ident().unwrap()).as_ref(), Span::call_site());
+                let field_name = Ident::new(format!("{}_preloaded", field).as_ref(), Span::call_site());
+
+                Some(quote! {
+                    #field_name: RefCell<Option<Vec<#graphql_type>>>
                 })
             },
             _ => None
@@ -129,6 +150,16 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
                         .entry(#str_model)
                         .or_insert(Vec::new())
                         .push(self_model.#field);
+                })
+            },
+            common::TypeRelationship::HasMany(_, _, model) => {
+                let str_model = model.get_ident().unwrap().to_string();
+
+                Some(quote! {
+                    type_to_ids
+                        .entry(#str_model)
+                        .or_insert(Vec::new())
+                        .push(self_model.id);
                 })
             },
             _ => None
@@ -161,6 +192,47 @@ pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
                         for self_model in self_models.iter() {
                             let child_model = distinct_id_to_model.get(&self_model.#field).unwrap();
                             self_model.#preload_field.replace_with(|_| Some(#graphql_type::from(child_model.clone())));
+                        }
+                    }
+                })
+            },
+            common::TypeRelationship::HasMany(schema, forign_key_path, model) => {
+                let str_model = model.get_ident().unwrap().to_string();
+                let graphql_type = Ident::new(format!("{}GQL", model.get_ident().unwrap()).as_ref(), Span::call_site());
+                let preload_field = Ident::new(format!("{}_preloaded", field).as_ref(), Span::call_site());
+
+                let forign_key = forign_key_path.segments.last().unwrap();
+
+                Some(quote! {
+                    {
+                        let mut forign_key_ids = type_to_ids.get_mut(#str_model).unwrap();
+                        forign_key_ids.sort();
+                        forign_key_ids.dedup();
+
+                        let models = #schema::table
+                            .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
+                            .load::<#model>(&context.connection)
+                            .unwrap();
+
+                        let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                        #graphql_type::preload_children(&gql_models, &context);
+
+                        let mut forign_key_to_models: HashMap<&Uuid, Vec<#model>> = HashMap::new();
+                        for model in models.iter() {
+                            forign_key_to_models
+                                .entry(&model.#forign_key)
+                                .or_insert(Vec::new())
+                                .push(model.to_owned());
+                        }
+
+                        for self_model in self_models.iter() {
+                            if let Some(child_models) = forign_key_to_models.get(&self_model.id) {
+                                self_model.#preload_field.replace_with(
+                                    |_| Some(
+                                        child_models.into_iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>()
+                                    )
+                                );
+                            }
                         }
                     }
                 })
