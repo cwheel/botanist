@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
+use juniper::{LookAheadSelection, DefaultScalarValue, LookAheadMethods};
 use syn::{Data, DeriveInput, Ident, Type, Attribute, Lit, Meta, PathArguments, GenericArgument, Path};
 
 pub enum TypeRelationship {

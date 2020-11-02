@@ -11,3 +11,4 @@ proc-macro = true
 syn = "1.0.23"
 quote = "1.0.6"
 proc-macro2 = "1.0.15"
+juniper = "0.14.2"

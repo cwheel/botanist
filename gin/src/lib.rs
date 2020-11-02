@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use juniper::Context;
+use juniper::{Context, LookAheadSelection, DefaultScalarValue};
 
 #[derive(Debug, Clone)]
 pub struct HasOne<T, S, M> {
@@ -16,5 +16,5 @@ pub struct HasMany<S, F, M> {
 }
 
 pub trait Preloadable<C: Context, T> {
-    fn preload_children(self_models: &Vec<T>, context: &C);
+    fn preload_children(self_models: &Vec<T>, context: &C, look_ahead: &LookAheadSelection<DefaultScalarValue>);
 }
