@@ -1,5 +1,5 @@
 use juniper::{
-    DefaultScalarValue, Executor, LookAheadMethods, LookAheadSelection, LookAheadValue, ScalarValue,
+    DefaultScalarValue, LookAheadMethods, LookAheadSelection, LookAheadValue, ScalarValue,
 };
 
 pub fn int_argument_from_look_ahead(
