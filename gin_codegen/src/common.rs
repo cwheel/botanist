@@ -1,50 +1,23 @@
 use proc_macro::TokenStream;
-use proc_macro2::Span;
-use quote::quote;
-use juniper::{LookAheadSelection, DefaultScalarValue, LookAheadMethods};
-use syn::{Data, DeriveInput, Ident, Type, Attribute, Lit, Meta, PathArguments, GenericArgument, Path};
+use proc_macro2::{Span, TokenTree};
+
+use syn::{Attribute, Data, DeriveInput, GenericArgument, Ident, Path, PathArguments, Type};
 
 pub enum TypeRelationship {
     HasMany(Path, Path, Path),
     HasOne(Path, Path, Path),
-    Field
+    Field,
 }
 
 enum IterationTypeRelationship {
     HasMany,
     HasOne,
-    Field
+    Field,
 }
 
-pub fn attribute_from_struct(ast: &DeriveInput, attribute: &str) -> Option<Lit> {
-    ast.attrs
-        .iter()
-        .filter(|attr| attr.path.is_ident(attribute))
-        .last()
-        .map(|attr| match attr.parse_meta() {
-            Ok(meta) => {
-                if let Meta::NameValue(attr_meta) = meta {
-                    Some(attr_meta.lit)
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        })
-        .unwrap()
-}
-
-pub fn attribute_from_struct_as_ident(ast: &DeriveInput, attribute: &str) -> (Option<String>, Option<Ident>) {
-    if let Some(attr) = attribute_from_struct(ast, attribute) {
-        if let Lit::Str(attr_str) = attr {
-            return (Some(attr_str.value()), Some(Ident::new(&attr_str.value(), Span::call_site())))
-        }
-    }
-
-    (None, None)
-}
-
-pub fn typed_struct_fields_from_ast<'a>(ast: &'a DeriveInput) -> Vec<(&'a Ident, &'a Type, &'a Vec<Attribute>)> {
+pub fn typed_struct_fields_from_ast<'a>(
+    ast: &'a DeriveInput,
+) -> Vec<(&'a Ident, &'a Type, &'a Vec<Attribute>)> {
     match &ast.data {
         Data::Struct(struct_data) => {
             let mut struct_values: Vec<(&Ident, &Type, &Vec<Attribute>)> = Vec::new();
@@ -76,28 +49,6 @@ pub fn tokenized_struct_fields_from_ast(
         .collect::<Vec<proc_macro2::TokenStream>>()
 }
 
-pub fn to_camel_case(input: String) -> String {
-    let mut first = true;
-    input.split("_").map(|token| {
-        if first {
-            first = false;
-            return token.to_owned();
-        }
-
-        token.chars().enumerate()
-            .map(|(i, c)| if i == 0 { c.to_uppercase().next().unwrap() } else { c.to_lowercase().next().unwrap() })
-            .collect::<String>()
-    }).collect()
-}
-
-pub fn uppercase(input: String) -> String {
-    input
-        .chars()
-        .enumerate()
-        .map(|(i, c)|  if i == 0 { c.to_uppercase().next().unwrap() } else { c.to_lowercase().next().unwrap() })
-        .collect::<String>()
-}
-
 pub fn type_relationship(ty: &Type) -> TypeRelationship {
     let mut relation = IterationTypeRelationship::Field;
 
@@ -115,45 +66,99 @@ pub fn type_relationship(ty: &Type) -> TypeRelationship {
                 return match relation {
                     IterationTypeRelationship::Field => TypeRelationship::Field,
                     IterationTypeRelationship::HasOne => {
-                        let generics = generics.args.iter().map(|generic| {
-                            if let GenericArgument::Type(generic_type) = generic {
-                                if let Type::Path(path) = generic_type {
-                                    // println!("{:?}", path.path);
-                                    return path.path.clone();
+                        let generics = generics
+                            .args
+                            .iter()
+                            .map(|generic| {
+                                if let GenericArgument::Type(generic_type) = generic {
+                                    if let Type::Path(path) = generic_type {
+                                        return path.path.clone();
+                                    }
                                 }
-                            }
 
-                            panic!("Invalid path in HasOne!");
-                        }).collect::<Vec<Path>>();
+                                panic!("Invalid path in HasOne!");
+                            })
+                            .collect::<Vec<Path>>();
 
                         TypeRelationship::HasOne(
                             generics[0].clone(),
                             generics[1].clone(),
                             generics[2].clone(),
                         )
-                    },
+                    }
                     IterationTypeRelationship::HasMany => {
-                        let generics = generics.args.iter().map(|generic| {
-                            if let GenericArgument::Type(generic_type) = generic {
-                                if let Type::Path(path) = generic_type {
-                                    // println!("{:?}", path.path);
-                                    return path.path.clone();
+                        let generics = generics
+                            .args
+                            .iter()
+                            .map(|generic| {
+                                if let GenericArgument::Type(generic_type) = generic {
+                                    if let Type::Path(path) = generic_type {
+                                        return path.path.clone();
+                                    }
                                 }
-                            }
 
-                            panic!("Invalid path in HasMany!");
-                        }).collect::<Vec<Path>>();
+                                panic!("Invalid path in HasMany!");
+                            })
+                            .collect::<Vec<Path>>();
 
                         TypeRelationship::HasMany(
                             generics[0].clone(),
                             generics[1].clone(),
                             generics[2].clone(),
                         )
-                    },
-                }
+                    }
+                };
             }
         }
     }
 
     TypeRelationship::Field
+}
+
+pub fn preload_field(field: &Ident) -> Ident {
+    Ident::new(format!("{}_preloaded", field).as_ref(), Span::call_site())
+}
+
+pub fn gql_struct(model: &Ident) -> Ident {
+    Ident::new(format!("{}GQL", model).as_ref(), Span::call_site())
+}
+
+pub fn gql_struct_from_model(model: &Path) -> Ident {
+    gql_struct(model.get_ident().unwrap())
+}
+
+pub fn get_type_info(field: &Ident, model: &Path) -> (Ident, Ident) {
+    (preload_field(field), gql_struct_from_model(model))
+}
+
+pub fn parse_tuple_attributes(
+    attrs: TokenStream,
+) -> impl Iterator<Item = impl Iterator<Item = Ident>> {
+    let tuples = proc_macro2::TokenStream::from(attrs).into_iter();
+
+    tuples
+        .map(|tuple| {
+            if let TokenTree::Group(tuple) = tuple {
+                let tuple_group_tokens = tuple.stream().into_iter();
+
+                Some(
+                    tuple_group_tokens
+                        .map(|tuple_token| {
+                            if let TokenTree::Ident(tuple_ident) = tuple_token {
+                                Some(tuple_ident)
+                            } else {
+                                None
+                            }
+                        })
+                        .filter(|maybe_ident| maybe_ident.is_some())
+                        .map(|tuple| tuple.unwrap())
+                        .into_iter(),
+                )
+            } else {
+                None
+            }
+        })
+        .filter(|maybe_tuple| maybe_tuple.is_some())
+        .map(|maybe_tuple| maybe_tuple.unwrap())
+        .into_iter()
 }
