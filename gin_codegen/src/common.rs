@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenTree};
 
-use syn::{Attribute, Data, DeriveInput, GenericArgument, Ident, Path, PathArguments, Type};
+use syn::{Attribute, Data, DeriveInput, GenericArgument, Ident, Path, PathArguments, Type, Meta, Lit};
 
 pub enum TypeRelationship {
     HasMany(Path, Path, Path),
@@ -161,4 +161,26 @@ pub fn parse_tuple_attributes(
         .filter(|maybe_tuple| maybe_tuple.is_some())
         .map(|maybe_tuple| maybe_tuple.unwrap())
         .into_iter()
+}
+
+pub fn schema_from_struct(ast: &DeriveInput) -> Option<Ident> {
+    ast.attrs
+        .iter()
+        .filter(|attr| attr.path.is_ident("table_name"))
+        .last()
+        .map(|attr| match attr.parse_meta() {
+            Ok(meta) => {
+                if let Meta::NameValue(attr_meta) = meta {
+                    if let Lit::Str(table_name) = attr_meta.lit {
+                        Some(Ident::new(&table_name.value(), Span::call_site()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        })
+        .unwrap()
 }

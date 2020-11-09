@@ -7,6 +7,7 @@ use crate::common;
 pub fn gin_object(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
     let struct_name = &ast.ident;
+    let schema = common::schema_from_struct(&ast).expect("every gin_object to have a table name");
 
     let gql_name = struct_name.to_string();
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
@@ -27,6 +28,63 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 }),
             },
         );
+
+    let tokenized_create_mutation_fields =
+        common::tokenized_struct_fields_from_ast(
+            &ast,
+            |ident, ty| match common::type_relationship(ty) {
+                common::TypeRelationship::HasMany(_, _, _) => None,
+                common::TypeRelationship::HasOne(relationship_type, _, _) => Some(quote! {
+                    pub #ident: #relationship_type
+                }),
+                common::TypeRelationship::Field => if ident == "id" { None } else { Some(quote! {
+                    pub #ident: #ty
+                }) },
+            },
+        );
+
+    let create_mutation_struct = Ident::new(format!("Create{}Input", struct_name).as_ref(), Span::call_site());
+    let create_mutation_struct_name = format!("New{}", struct_name);
+
+    let tokenized_create_mutation_values =
+        common::tokenized_struct_fields_from_ast(
+            &ast,
+            |ident, ty| match common::type_relationship(ty) {
+                common::TypeRelationship::HasMany(_, _, _) => None,
+                common::TypeRelationship::HasOne(_, _, _) => Some(quote! {
+                    #schema::#ident.eq(&self_model.#ident)
+                }),
+                common::TypeRelationship::Field => if ident == "id" { None } else { Some(quote! {
+                    #schema::#ident.eq(&self_model.#ident)
+                }) },
+            },
+        );
+
+    let create_mutation = if tokenized_create_mutation_fields.is_empty() {
+        None
+    } else {
+        Some(
+            quote! {
+                #[derive(juniper::GraphQLInputObject)]
+                #[graphql(name=#create_mutation_struct_name)]
+                pub struct #create_mutation_struct {
+                    #( #tokenized_create_mutation_fields, )*
+                }
+
+                impl CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
+                    fn create(context: &Context, self_model: #create_mutation_struct) -> #gql_struct_name {
+                        let loaded_model: #struct_name = diesel::insert_into(#schema::table).values(
+                            (
+                                #( #tokenized_create_mutation_values, )*
+                            )
+                        ).get_result(&context.connection).unwrap();
+
+                        #gql_struct_name::from(loaded_model)
+                    }
+                }
+            }
+        )
+    };
 
     // Fields to implement std::From on the GQL struct for the model
     let tokenized_from_fields =
@@ -245,8 +303,8 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
 
     let attrs = &ast.attrs;
     let gen = quote! {
-        use gin::Preloadable;
-        use gin::macro_helpers;
+        use diesel::prelude::*;
+        use gin::{CreateMutation, Preloadable, macro_helpers};
         use std::cell::RefCell;
 
         use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue};
@@ -290,6 +348,8 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 #( #preloaders )*
             }
         }
+
+        #create_mutation
     };
 
     gen.into()

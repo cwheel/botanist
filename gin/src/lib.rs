@@ -24,3 +24,10 @@ pub trait Preloadable<C: Context, T> {
         look_ahead: &LookAheadSelection<DefaultScalarValue>,
     );
 }
+
+pub trait CreateMutation<C: Context, T, Q> {
+    fn create(
+        context: &C,
+        self_model: T,
+    ) -> Q;
+}

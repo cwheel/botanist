@@ -15,12 +15,20 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
             let graphql_type = common::gql_struct(&model);
 
+            let create_mutation_struct = Ident::new(format!("Create{}Input", model).as_ref(), Span::call_site());
+            let create_mutation = Ident::new(format!("create{}", model).as_ref(), Span::call_site());
+
             quote! {
+                pub fn #create_mutation(context: &Context, input: #create_mutation_struct) -> #graphql_type {
+                    #create_mutation_struct::create(context, input)
+                }
             }
         })
         .collect::<Vec<proc_macro2::TokenStream>>();
 
         let gen = quote! {
+            use gin::CreateMutation;
+
             #[juniper::object(Context = Context)]
             impl #mutation_type {
                 #( #user_defined_mutations )*
