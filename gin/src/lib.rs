@@ -31,3 +31,18 @@ pub trait CreateMutation<C: Context, T, Q> {
         self_model: T,
     ) -> Q;
 }
+
+pub trait UpdateMutation<C: Context, T, Q> {
+    fn update(
+        context: &C,
+        self_model: T,
+    ) -> Q;
+}
+
+
+pub trait DeleteMutation<C: Context, T, Q> {
+    fn delete(
+        context: &C,
+        id: T,
+    ) -> Q;
+}

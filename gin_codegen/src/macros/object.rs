@@ -3,6 +3,7 @@ use proc_macro2::{Ident, Span};
 use syn::DeriveInput;
 
 use crate::common;
+use crate::macros::mutation::{generate_create_mutation, generate_update_mutation, generate_delete_mutation};
 
 pub fn gin_object(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
@@ -28,63 +29,6 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 }),
             },
         );
-
-    let tokenized_create_mutation_fields =
-        common::tokenized_struct_fields_from_ast(
-            &ast,
-            |ident, ty| match common::type_relationship(ty) {
-                common::TypeRelationship::HasMany(_, _, _) => None,
-                common::TypeRelationship::HasOne(relationship_type, _, _) => Some(quote! {
-                    pub #ident: #relationship_type
-                }),
-                common::TypeRelationship::Field => if ident == "id" { None } else { Some(quote! {
-                    pub #ident: #ty
-                }) },
-            },
-        );
-
-    let create_mutation_struct = Ident::new(format!("Create{}Input", struct_name).as_ref(), Span::call_site());
-    let create_mutation_struct_name = format!("New{}", struct_name);
-
-    let tokenized_create_mutation_values =
-        common::tokenized_struct_fields_from_ast(
-            &ast,
-            |ident, ty| match common::type_relationship(ty) {
-                common::TypeRelationship::HasMany(_, _, _) => None,
-                common::TypeRelationship::HasOne(_, _, _) => Some(quote! {
-                    #schema::#ident.eq(&self_model.#ident)
-                }),
-                common::TypeRelationship::Field => if ident == "id" { None } else { Some(quote! {
-                    #schema::#ident.eq(&self_model.#ident)
-                }) },
-            },
-        );
-
-    let create_mutation = if tokenized_create_mutation_fields.is_empty() {
-        None
-    } else {
-        Some(
-            quote! {
-                #[derive(juniper::GraphQLInputObject)]
-                #[graphql(name=#create_mutation_struct_name)]
-                pub struct #create_mutation_struct {
-                    #( #tokenized_create_mutation_fields, )*
-                }
-
-                impl CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
-                    fn create(context: &Context, self_model: #create_mutation_struct) -> #gql_struct_name {
-                        let loaded_model: #struct_name = diesel::insert_into(#schema::table).values(
-                            (
-                                #( #tokenized_create_mutation_values, )*
-                            )
-                        ).get_result(&context.connection).unwrap();
-
-                        #gql_struct_name::from(loaded_model)
-                    }
-                }
-            }
-        )
-    };
 
     // Fields to implement std::From on the GQL struct for the model
     let tokenized_from_fields =
@@ -301,10 +245,15 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
         }
     });
 
+    // Mutations
+    let create_mutation = generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name);
+    let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name);
+    let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name);
+
     let attrs = &ast.attrs;
     let gen = quote! {
         use diesel::prelude::*;
-        use gin::{CreateMutation, Preloadable, macro_helpers};
+        use gin::{CreateMutation, UpdateMutation, DeleteMutation, Preloadable, macro_helpers};
         use std::cell::RefCell;
 
         use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue};
@@ -350,6 +299,8 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
         }
 
         #create_mutation
+        #update_mutation
+        #delete_mutation
     };
 
     gen.into()
