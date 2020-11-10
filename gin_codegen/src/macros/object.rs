@@ -256,7 +256,7 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
         use gin::{CreateMutation, UpdateMutation, DeleteMutation, Preloadable, macro_helpers};
         use std::cell::RefCell;
 
-        use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue};
+        use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue, FieldResult};
 
         // Diesel model struct
         #( #attrs )*

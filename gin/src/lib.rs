@@ -1,4 +1,4 @@
-use juniper::{Context, DefaultScalarValue, LookAheadSelection};
+use juniper::{Context, DefaultScalarValue, LookAheadSelection, FieldResult};
 use std::marker::PhantomData;
 
 pub mod macro_helpers;
@@ -29,20 +29,19 @@ pub trait CreateMutation<C: Context, T, Q> {
     fn create(
         context: &C,
         self_model: T,
-    ) -> Q;
+    ) -> FieldResult<Q>;
 }
 
 pub trait UpdateMutation<C: Context, T, Q> {
     fn update(
         context: &C,
         self_model: T,
-    ) -> Q;
+    ) -> FieldResult<Q>;
 }
-
 
 pub trait DeleteMutation<C: Context, T, Q> {
     fn delete(
         context: &C,
         id: T,
-    ) -> Q;
+    ) -> FieldResult<Q>;
 }

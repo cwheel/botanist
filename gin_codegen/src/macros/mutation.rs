@@ -23,15 +23,15 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let delete_mutation = Ident::new(format!("delete{}", model).as_ref(), Span::call_site());
 
             quote! {
-                pub fn #create_mutation(context: &Context, input: #create_mutation_struct) -> #graphql_type {
+                pub fn #create_mutation(context: &Context, input: #create_mutation_struct) -> FieldResult<#graphql_type> {
                     #create_mutation_struct::create(context, input)
                 }
 
-                pub fn #update_mutation(context: &Context, input: #update_mutation_struct) -> #graphql_type {
+                pub fn #update_mutation(context: &Context, input: #update_mutation_struct) -> FieldResult<#graphql_type> {
                     #update_mutation_struct::update(context, input)
                 }
 
-                pub fn #delete_mutation(context: &Context, id: Uuid) -> #graphql_type {
+                pub fn #delete_mutation(context: &Context, id: Uuid) -> FieldResult<#graphql_type> {
                     #graphql_type::delete(context, id)
                 }
             }
@@ -98,14 +98,17 @@ pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
                 }
 
                 impl CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
-                    fn create(context: &Context, self_model: #create_mutation_struct) -> #gql_struct_name {
-                        let loaded_model: #struct_name = diesel::insert_into(#schema::table).values(
+                    fn create(context: &Context, self_model: #create_mutation_struct) -> FieldResult<#gql_struct_name> {
+                        diesel::insert_into(#schema::table).values(
                             (
                                 #( #tokenized_create_mutation_values, )*
                             )
-                        ).get_result(&context.connection).unwrap();
-
-                        #gql_struct_name::from(loaded_model)
+                        )
+                        .get_result(&context.connection)
+                        .map_or_else(
+                            |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                            |create_result: #struct_name| Ok(#gql_struct_name::from(create_result))
+                        )
                     }
                 }
             }
@@ -153,12 +156,16 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
                 }
 
                 impl UpdateMutation<Context, #update_mutation_struct, #gql_struct_name> for #update_mutation_struct {
-                    fn update(context: &Context, self_model: #update_mutation_struct) -> #gql_struct_name {
-                        let loaded_model: #struct_name = diesel::update(
+                    fn update(context: &Context, self_model: #update_mutation_struct) -> FieldResult<#gql_struct_name> {
+                        diesel::update(
                             #schema::table.filter(#schema::id.eq(&self_model.id))
-                        ).set(&self_model).get_result(&context.connection).unwrap();
-                        
-                        #gql_struct_name::from(loaded_model)
+                        )
+                        .set(&self_model)
+                        .get_result(&context.connection)
+                        .map_or_else(
+                            |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                            |update_result: #struct_name| Ok(#gql_struct_name::from(update_result))
+                        )
                     }
                 }
             }
@@ -169,12 +176,15 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
 pub fn generate_delete_mutation(struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident) -> proc_macro2::TokenStream {
     quote! {
         impl DeleteMutation<Context, Uuid, #gql_struct_name> for #gql_struct_name {
-            fn delete(context: &Context, id: Uuid) -> #gql_struct_name {
-                let delete_result: #struct_name = diesel::delete(
+            fn delete(context: &Context, id: Uuid) -> FieldResult<#gql_struct_name> {
+                diesel::delete(
                     #schema::table.filter(#schema::id.eq(id))
-                ).get_result(&context.connection).unwrap();
-        
-                #gql_struct_name::from(delete_result)
+                )
+                .get_result(&context.connection)
+                .map_or_else(
+                    |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                    |delete_result: #struct_name| Ok(#gql_struct_name::from(delete_result))
+                )
             }
         }
     }
