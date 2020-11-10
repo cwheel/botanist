@@ -63,21 +63,24 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &Context, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> Vec<#graphql_type> {
+                    pub fn #field(&self, context: &Context, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> FieldResult<Vec<#graphql_type>> {
                         if self.#preload_field.borrow().is_some() {
-                            self.#preload_field.replace_with(|_| None).unwrap()
+                            Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
-                            let mut models = #schema::table
+                            #schema::table
                                 .filter(#forign_key.eq(&self.id))
                                 .limit(first.unwrap_or(10) as i64)
                                 .offset(offset.unwrap_or(0) as i64)
                                 .load::<#model>(&context.connection)
-                                .unwrap();
+                                .map_or_else(
+                                    |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                                    |models| {
+                                        let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                                        #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead());
 
-                            let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                            #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead());
-
-                            gql_models
+                                        Ok(gql_models)
+                                    }
+                                )
                         }
                     }
                 }
@@ -86,16 +89,17 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &Context, executor: &Executor) -> #graphql_type {
+                    pub fn #field(&self, context: &Context, executor: &Executor) -> FieldResult<#graphql_type> {
                         if self.#preload_field.borrow().is_some() {
-                            self.#preload_field.replace_with(|_| None).unwrap()
+                            Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
-                            let model = #schema::table
+                            #schema::table
                                 .filter(#schema::id.eq(&self.#field))
-                                .load::<#model>(&context.connection)
-                                .unwrap();
-
-                            #graphql_type::from(model.first().unwrap().to_owned())
+                                .get_result::<#model>(&context.connection)
+                                .map_or_else(
+                                    |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                                    |model| Ok(#graphql_type::from(model.to_owned()))
+                                )
                         }
                     }
                 }
@@ -170,23 +174,24 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 Some(quote! {
                     {
                         if let Some(look_ahead_selection) = look_ahead.select_child(#str_field) {
-                            let mut distinct_ids = type_to_ids.get_mut(#str_model).unwrap();
-                            distinct_ids.sort();
-                            distinct_ids.dedup();
+                            if let Some(mut distinct_ids) = type_to_ids.get_mut(#str_model) {
+                                distinct_ids.sort();
+                                distinct_ids.dedup();
 
-                            let models = #schema::table
-                                .filter(#schema::id.eq_any(&*distinct_ids))
-                                .load::<#model>(&context.connection)
-                                .unwrap();
+                                let models = #schema::table
+                                    .filter(#schema::id.eq_any(&*distinct_ids))
+                                    .load::<#model>(&context.connection)
+                                    .unwrap();
 
-                            let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                            #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection);
+                                let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                                #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection);
 
-                            let distinct_id_to_model: HashMap<&Uuid, #model> = HashMap::from_iter(distinct_ids.iter().zip(models.into_iter()));
+                                let distinct_id_to_model: HashMap<&Uuid, #model> = HashMap::from_iter(distinct_ids.iter().zip(models.into_iter()));
 
-                            for self_model in self_models.iter() {
-                                let child_model = distinct_id_to_model.get(&self_model.#field).unwrap();
-                                self_model.#preload_field.replace_with(|_| Some(#graphql_type::from(child_model.clone())));
+                                for self_model in self_models.iter() {
+                                    let child_model = distinct_id_to_model.get(&self_model.#field).unwrap();
+                                    self_model.#preload_field.replace_with(|_| Some(#graphql_type::from(child_model.clone())));
+                                }
                             }
                         }
                     }

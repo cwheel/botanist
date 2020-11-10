@@ -44,8 +44,7 @@ pub fn tokenized_struct_fields_from_ast(
     typed_struct_fields_from_ast(ast)
         .iter()
         .map(|(field, ty, _)| tokenizer(field, ty))
-        .filter(|maybe_token| maybe_token.is_some())
-        .map(|token| token.unwrap())
+        .filter_map(|maybe_token| maybe_token)
         .collect::<Vec<proc_macro2::TokenStream>>()
 }
 
@@ -150,8 +149,7 @@ pub fn parse_tuple_attributes(
                                 None
                             }
                         })
-                        .filter(|maybe_ident| maybe_ident.is_some())
-                        .map(|tuple| tuple.unwrap())
+                        .filter_map(|ident| ident)
                         .into_iter(),
                 )
             } else {
