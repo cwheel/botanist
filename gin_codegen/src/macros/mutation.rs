@@ -9,9 +9,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let user_defined_mutations = &ast.items;
 
     if let Type::Path(mutation_type) = *ast.self_ty {
-        let mutations = common::parse_tuple_attributes(attrs).map(|mut root_type| {
-            let model = root_type.next().expect("a model");
-
+        let mutations = common::parse_ident_attributes(attrs).map(|model| {
             let graphql_type = common::gql_struct(&model);
 
             let create_mutation_struct = Ident::new(format!("Create{}Input", model).as_ref(), Span::call_site());
@@ -58,6 +56,8 @@ pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
     let create_mutation_struct = Ident::new(format!("Create{}Input", struct_name).as_ref(), Span::call_site());
     let create_mutation_struct_name = format!("New{}", struct_name);
 
+    let schema_str = schema.to_string();
+
     let tokenized_create_mutation_fields =
         common::tokenized_struct_fields_from_ast(
             &ast,
@@ -72,43 +72,27 @@ pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
             },
         );
 
-    let tokenized_create_mutation_values =
-        common::tokenized_struct_fields_from_ast(
-            &ast,
-            |ident, ty| match common::type_relationship(ty) {
-                common::TypeRelationship::HasMany(_, _, _) => None,
-                common::TypeRelationship::HasOne(_, _, _) => Some(quote! {
-                    #schema::#ident.eq(&self_model.#ident)
-                }),
-                common::TypeRelationship::Field => if ident == "id" { None } else { Some(quote! {
-                    #schema::#ident.eq(&self_model.#ident)
-                }) },
-            },
-        );
-
     if tokenized_create_mutation_fields.is_empty() {
         None
     } else {
         Some(
             quote! {
-                #[derive(juniper::GraphQLInputObject)]
+                #[derive(juniper::GraphQLInputObject, Insertable)]
                 #[graphql(name=#create_mutation_struct_name)]
+                #[table_name = #schema_str]
                 pub struct #create_mutation_struct {
                     #( #tokenized_create_mutation_fields, )*
                 }
 
                 impl CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
                     fn create(context: &Context, self_model: #create_mutation_struct) -> FieldResult<#gql_struct_name> {
-                        diesel::insert_into(#schema::table).values(
-                            (
-                                #( #tokenized_create_mutation_values, )*
+                        diesel::insert_into(#schema::table)
+                            .values(&self_model)
+                            .get_result(&context.connection)
+                            .map_or_else(
+                                |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                                |create_result: #struct_name| Ok(#gql_struct_name::from(create_result))
                             )
-                        )
-                        .get_result(&context.connection)
-                        .map_or_else(
-                            |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
-                            |create_result: #struct_name| Ok(#gql_struct_name::from(create_result))
-                        )
                     }
                 }
             }

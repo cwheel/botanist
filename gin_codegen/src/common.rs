@@ -156,8 +156,24 @@ pub fn parse_tuple_attributes(
                 None
             }
         })
-        .filter(|maybe_tuple| maybe_tuple.is_some())
-        .map(|maybe_tuple| maybe_tuple.unwrap())
+        .filter_map(|tuple| tuple)
+        .into_iter()
+}
+
+pub fn parse_ident_attributes(
+    attrs: TokenStream,
+) -> impl Iterator<Item = Ident> {
+    let idents = proc_macro2::TokenStream::from(attrs).into_iter();
+
+    idents
+        .map(|ident| {
+            if let TokenTree::Ident(ident) = ident {
+              Some(ident)
+            } else {
+                None
+            }
+        })
+        .filter_map(|ident| ident)
         .into_iter()
 }
 
