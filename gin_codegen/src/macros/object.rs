@@ -192,8 +192,9 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                                 let distinct_id_to_model: HashMap<&Uuid, #model> = HashMap::from_iter(distinct_ids.iter().zip(models.into_iter()));
 
                                 for self_model in self_models.iter() {
-                                    let child_model = distinct_id_to_model.get(&self_model.#field).unwrap();
-                                    self_model.#preload_field.replace_with(|_| Some(#graphql_type::from(child_model.clone())));
+                                    if let Some(child_model) = distinct_id_to_model.get(&self_model.#field) {
+                                        self_model.#preload_field.replace_with(|_| Some(#graphql_type::from(child_model.clone())));
+                                    }
                                 }
                             }
                         }
@@ -210,37 +211,38 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 Some(quote! {
                     {
                         if let Some(look_ahead_selection) = look_ahead.select_child(#str_field) {
-                            let mut forign_key_ids = type_to_ids.get_mut(#str_model).unwrap();
-                            forign_key_ids.sort();
-                            forign_key_ids.dedup();
+                            if let Some(mut forign_key_ids) = type_to_ids.get_mut(#str_model) {
+                                forign_key_ids.sort();
+                                forign_key_ids.dedup();
 
-                            let first = macro_helpers::int_argument_from_look_ahead(look_ahead, "first", 10);
-                            let offset = macro_helpers::int_argument_from_look_ahead(look_ahead, "offset", 0);
+                                let first = macro_helpers::int_argument_from_look_ahead(look_ahead, "first", 10);
+                                let offset = macro_helpers::int_argument_from_look_ahead(look_ahead, "offset", 0);
 
-                            let models = #schema::table
-                                .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
-                                .limit(first as i64)
-                                .offset(offset as i64)
-                                .load::<#model>(&context.connection)?;
+                                let models = #schema::table
+                                    .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
+                                    .limit(first as i64)
+                                    .offset(offset as i64)
+                                    .load::<#model>(&context.connection)?;
 
-                            let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                            #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
+                                let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                                #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
-                            let mut forign_key_to_models: HashMap<&Uuid, Vec<#model>> = HashMap::new();
-                            for model in models.iter() {
-                                forign_key_to_models
-                                    .entry(&model.#forign_key)
-                                    .or_insert(Vec::new())
-                                    .push(model.to_owned());
-                            }
+                                let mut forign_key_to_models: HashMap<&Uuid, Vec<#model>> = HashMap::new();
+                                for model in models.iter() {
+                                    forign_key_to_models
+                                        .entry(&model.#forign_key)
+                                        .or_insert(Vec::new())
+                                        .push(model.to_owned());
+                                }
 
-                            for self_model in self_models.iter() {
-                                if let Some(child_models) = forign_key_to_models.get(&self_model.id) {
-                                    self_model.#preload_field.replace_with(
-                                        |_| Some(
-                                            child_models.into_iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>()
-                                        )
-                                    );
+                                for self_model in self_models.iter() {
+                                    if let Some(child_models) = forign_key_to_models.get(&self_model.id) {
+                                        self_model.#preload_field.replace_with(
+                                            |_| Some(
+                                                child_models.into_iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>()
+                                            )
+                                        );
+                                    }
                                 }
                             }
                         }
