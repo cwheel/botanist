@@ -38,9 +38,13 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                             |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                             |models| {
                                 let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                                #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead());
+                                let preload_result = #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead());
 
-                                Ok(gql_models)
+                                if let Err(preload_err) = preload_result {
+                                    Err(juniper::FieldError::new(preload_err.to_string(), juniper::Value::null()))
+                                } else {
+                                    Ok(gql_models)
+                                }
                             }
                         )
                 }

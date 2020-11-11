@@ -1,3 +1,4 @@
+use diesel::result::Error;
 use juniper::{Context, DefaultScalarValue, LookAheadSelection, FieldResult};
 use std::marker::PhantomData;
 
@@ -22,7 +23,7 @@ pub trait Preloadable<C: Context, T> {
         self_models: &Vec<T>,
         context: &C,
         look_ahead: &LookAheadSelection<DefaultScalarValue>,
-    );
+    ) -> Result<(), Error>;
 }
 
 pub trait CreateMutation<C: Context, T, Q> {
