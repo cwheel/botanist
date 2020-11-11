@@ -3,7 +3,12 @@ use proc_macro2::{Ident, Span};
 use syn::DeriveInput;
 
 use crate::common;
-use crate::macros::mutation::{generate_create_mutation, generate_update_mutation, generate_delete_mutation};
+use crate::macros::query::{generate_root_resolvers};
+use crate::macros::mutation::{
+    generate_create_mutation,
+    generate_update_mutation,
+    generate_delete_mutation
+};
 
 pub fn gin_object(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
@@ -258,11 +263,14 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
     let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name);
     let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name);
 
+    // Query Root Resolvers
+    let root_resolvers = generate_root_resolvers(&struct_name, &schema, &gql_struct_name);
+
     let attrs = &ast.attrs;
     let gen = quote! {
         use diesel::prelude::*;
         use diesel::result::Error;
-        use gin::{CreateMutation, UpdateMutation, DeleteMutation, Preloadable, macro_helpers};
+        use gin::{CreateMutation, UpdateMutation, DeleteMutation, Preloadable, RootResolver, macro_helpers};
         use std::cell::RefCell;
 
         use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue, FieldResult};
@@ -312,6 +320,8 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
         #create_mutation
         #update_mutation
         #delete_mutation
+
+        #root_resolvers
     };
 
     gen.into()

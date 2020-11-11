@@ -1,5 +1,5 @@
 use diesel::result::Error;
-use juniper::{Context, DefaultScalarValue, LookAheadSelection, FieldResult};
+use juniper::{Context, DefaultScalarValue, LookAheadSelection, FieldResult, Executor};
 use std::marker::PhantomData;
 
 pub mod macro_helpers;
@@ -45,4 +45,19 @@ pub trait DeleteMutation<C: Context, T, Q> {
         context: &C,
         id: T,
     ) -> FieldResult<Q>;
+}
+
+pub trait RootResolver<C: Context, T, Q, S> {
+    fn resolve_single(
+        context: &C,
+        id: T,
+    ) -> FieldResult<Q>;
+
+    fn resolve_multiple(
+        context: &C,
+        executor: &Executor<C, S>,
+        ids: Vec<T>,
+        first: Option<i32>,
+        offset: Option<i32>
+    ) -> FieldResult<Vec<Q>>;
 }
