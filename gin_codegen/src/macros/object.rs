@@ -13,7 +13,7 @@ use crate::macros::mutation::{
 pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
     let struct_name = &ast.ident;
-    let schema = common::schema_from_struct(&ast).expect("every gin_object to have a table name");
+    let schema = common::schema_from_struct(&ast).expect("every gin_object must have a table name");
 
     let (_, params) = common::parse_ident_attributes(attrs);
     let context_ty = params.get("Context").expect("a context must be specified");
@@ -79,7 +79,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                 .filter(#forign_key.eq(&self.id))
                                 .limit(first.unwrap_or(10) as i64)
                                 .offset(offset.unwrap_or(0) as i64)
-                                .load::<#model>(&context.connection)
+                                .load::<#model>(context.get_connection())
                                 .map_or_else(
                                     |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                                     |models| {
@@ -107,7 +107,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                         } else {
                             #schema::table
                                 .filter(#schema::id.eq(&self.#field))
-                                .get_result::<#model>(&context.connection)
+                                .get_result::<#model>(context.get_connection())
                                 .map_or_else(
                                     |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                                     |model| Ok(#graphql_type::from(model.to_owned()))
@@ -192,7 +192,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
                                 let models = #schema::table
                                     .filter(#schema::id.eq_any(&*distinct_ids))
-                                    .load::<#model>(&context.connection)?;
+                                    .load::<#model>(context.get_connection())?;
 
                                 let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
@@ -230,7 +230,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                     .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
                                     .limit(first as i64)
                                     .offset(offset as i64)
-                                    .load::<#model>(&context.connection)?;
+                                    .load::<#model>(context.get_connection())?;
 
                                 let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
@@ -273,7 +273,9 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let gen = quote! {
         use diesel::prelude::*;
         use diesel::result::Error;
-        use gin::{CreateMutation, UpdateMutation, DeleteMutation, Preloadable, RootResolver, macro_helpers};
+        use gin::internal::{__internal__CreateMutation, __internal__UpdateMutation, __internal__DeleteMutation, __internal__Preloadable, __internal__RootResolver};
+        use gin::macro_helpers;
+        use gin::Context as GinContext;
         use std::cell::RefCell;
 
         use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue, FieldResult};
@@ -303,7 +305,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl Preloadable<Context, #gql_struct_name> for #gql_struct_name {
+        impl __internal__Preloadable<Context, #gql_struct_name> for #gql_struct_name {
             fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &LookAheadSelection<DefaultScalarValue>) -> Result<(), Error> {
                 use std::collections::HashMap;
                 use std::iter::FromIterator;

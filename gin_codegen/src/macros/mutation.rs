@@ -40,7 +40,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
         .collect::<Vec<proc_macro2::TokenStream>>();
 
         let gen = quote! {
-            use gin::{CreateMutation, UpdateMutation, DeleteMutation};
+            use gin::internal::{__internal__CreateMutation, __internal__UpdateMutation, __internal__DeleteMutation};
 
             #[juniper::object(Context = #context_ty)]
             impl #mutation_type {
@@ -87,11 +87,11 @@ pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
                     #( #tokenized_create_mutation_fields, )*
                 }
 
-                impl CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
+                impl __internal__CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
                     fn create(context: &Context, self_model: #create_mutation_struct) -> FieldResult<#gql_struct_name> {
                         diesel::insert_into(#schema::table)
                             .values(&self_model)
-                            .get_result(&context.connection)
+                            .get_result(context.get_connection())
                             .map_or_else(
                                 |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                                 |create_result: #struct_name| Ok(#gql_struct_name::from(create_result))
@@ -142,13 +142,13 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
                     #( #tokenized_create_mutation_fields, )*
                 }
 
-                impl UpdateMutation<Context, #update_mutation_struct, #gql_struct_name> for #update_mutation_struct {
+                impl __internal__UpdateMutation<Context, #update_mutation_struct, #gql_struct_name> for #update_mutation_struct {
                     fn update(context: &Context, self_model: #update_mutation_struct) -> FieldResult<#gql_struct_name> {
                         diesel::update(
                             #schema::table.filter(#schema::id.eq(&self_model.id))
                         )
                         .set(&self_model)
-                        .get_result(&context.connection)
+                        .get_result(context.get_connection())
                         .map_or_else(
                             |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                             |update_result: #struct_name| Ok(#gql_struct_name::from(update_result))
@@ -162,12 +162,12 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
 
 pub fn generate_delete_mutation(struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident) -> proc_macro2::TokenStream {
     quote! {
-        impl DeleteMutation<Context, Uuid, #gql_struct_name> for #gql_struct_name {
+        impl __internal__DeleteMutation<Context, Uuid, #gql_struct_name> for #gql_struct_name {
             fn delete(context: &Context, id: Uuid) -> FieldResult<#gql_struct_name> {
                 diesel::delete(
                     #schema::table.filter(#schema::id.eq(id))
                 )
-                .get_result(&context.connection)
+                .get_result(context.get_connection())
                 .map_or_else(
                     |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                     |delete_result: #struct_name| Ok(#gql_struct_name::from(delete_result))

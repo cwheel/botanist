@@ -30,7 +30,7 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
         .collect::<Vec<proc_macro2::TokenStream>>();
 
         let gen = quote! {
-            use gin::{Preloadable, RootResolver};
+            use gin::internal::{__internal__Preloadable, __internal__RootResolver};
 
             #[juniper::object(Context = #context_ty)]
             impl #query_type {
@@ -47,11 +47,11 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
 pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ident) -> proc_macro2::TokenStream {
     quote! {
-        impl RootResolver<Context, Uuid, #graphql_type, DefaultScalarValue> for #model {
+        impl __internal__RootResolver<Context, Uuid, #graphql_type, DefaultScalarValue> for #model {
             fn resolve_single(context: &Context, id: Uuid) -> FieldResult<#graphql_type> {
                 #schema::table
                         .filter(#schema::id.eq(id))
-                        .get_result::<#model>(&context.connection)
+                        .get_result::<#model>(context.get_connection())
                         .map_or_else(
                             |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                             |model| Ok(#graphql_type::from(model.to_owned()))
@@ -63,7 +63,7 @@ pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ide
                     .filter(#schema::id.eq_any(&*ids))
                     .limit(first.unwrap_or(10) as i64)
                     .offset(offset.unwrap_or(0) as i64)
-                    .load::<#model>(&context.connection)
+                    .load::<#model>(context.get_connection())
                     .map_or_else(
                         |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                         |models| {
