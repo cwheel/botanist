@@ -9,17 +9,20 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let user_defined_resolvers = &ast.items;
 
     if let Type::Path(query_type) = *ast.self_ty {
-        let root_resolvers = common::parse_ident_attributes(attrs).map(|model| {
+        let (query_models, params) = common::parse_ident_attributes(attrs);
+        let context_ty = params.get("Context").expect("a context must be specified");
+    
+        let root_resolvers = query_models.map(|model| {
             let graphql_type = common::gql_struct(&model);
             let singular = Ident::new(model.to_string().to_lowercase().as_ref(), Span::call_site());
             let plural = Ident::new(format!("{}s", singular).as_ref(), Span::call_site());
 
             quote! {
-                fn #singular(context: &Context, id: Uuid) -> FieldResult<#graphql_type> {
+                fn #singular(context: &#context_ty, id: Uuid) -> FieldResult<#graphql_type> {
                     #model::resolve_single(context, id)
                 }
 
-                fn #plural(context: &Context, executor: &Executor, ids: Vec<Uuid>, first: Option<i32>, offset: Option<i32>) -> FieldResult<Vec<#graphql_type>> {
+                fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<Uuid>, first: Option<i32>, offset: Option<i32>) -> FieldResult<Vec<#graphql_type>> {
                     #model::resolve_multiple(context, executor, ids, first, offset)
                 }
             }
@@ -29,7 +32,7 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
         let gen = quote! {
             use gin::{Preloadable, RootResolver};
 
-            #[juniper::object(Context = Context)]
+            #[juniper::object(Context = #context_ty)]
             impl #query_type {
                 #( #user_defined_resolvers )*
                 #( #root_resolvers )*

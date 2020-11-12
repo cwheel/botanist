@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenTree};
 
@@ -162,19 +163,35 @@ pub fn parse_tuple_attributes(
 
 pub fn parse_ident_attributes(
     attrs: TokenStream,
-) -> impl Iterator<Item = Ident> {
+) -> (impl Iterator<Item = Ident>, HashMap<String, Ident>) {
     let idents = proc_macro2::TokenStream::from(attrs).into_iter();
+    let mut named_values: HashMap<String, Ident> = HashMap::new();
+    let mut unnamed_values: Vec<Ident> = Vec::new();
 
-    idents
-        .map(|ident| {
-            if let TokenTree::Ident(ident) = ident {
-              Some(ident)
+    let mut in_expr = false;
+
+    for ident in idents {
+        if let TokenTree::Ident(ident) = ident {
+            if in_expr {
+                named_values.insert(unnamed_values.pop().unwrap().to_string(), ident);
+                in_expr = false;
             } else {
-                None
+                unnamed_values.push(ident);
             }
-        })
-        .filter_map(|ident| ident)
-        .into_iter()
+        } else if let TokenTree::Punct(character) = ident {
+            let raw_char = character.as_char();
+
+            if raw_char == '=' {
+                in_expr = true;
+            } else if raw_char != ',' {
+                panic!("Unexpected punctuation in attribute!");
+            }
+        } else {
+            panic!("Unexpected token in attribute!");
+        }
+    }
+
+    (unnamed_values.into_iter(), named_values)
 }
 
 pub fn schema_from_struct(ast: &DeriveInput) -> Option<Ident> {

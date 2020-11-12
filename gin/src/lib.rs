@@ -1,5 +1,6 @@
 use diesel::result::Error;
-use juniper::{Context, DefaultScalarValue, LookAheadSelection, FieldResult, Executor};
+use juniper::{DefaultScalarValue, LookAheadSelection, FieldResult, Executor};
+use juniper::Context as JuniperContext;
 use std::marker::PhantomData;
 
 pub mod macro_helpers;
@@ -18,7 +19,11 @@ pub struct HasMany<S, F, M> {
     model: PhantomData<M>,
 }
 
-pub trait Preloadable<C: Context, T> {
+pub trait Context<C> {
+    fn get_connection<'a>(&'a self) -> &'a C;
+}
+
+pub trait Preloadable<C:JuniperContext, T> {
     fn preload_children(
         self_models: &Vec<T>,
         context: &C,
@@ -26,28 +31,28 @@ pub trait Preloadable<C: Context, T> {
     ) -> Result<(), Error>;
 }
 
-pub trait CreateMutation<C: Context, T, Q> {
+pub trait CreateMutation<C:JuniperContext, T, Q> {
     fn create(
         context: &C,
         self_model: T,
     ) -> FieldResult<Q>;
 }
 
-pub trait UpdateMutation<C: Context, T, Q> {
+pub trait UpdateMutation<C:JuniperContext, T, Q> {
     fn update(
         context: &C,
         self_model: T,
     ) -> FieldResult<Q>;
 }
 
-pub trait DeleteMutation<C: Context, T, Q> {
+pub trait DeleteMutation<C:JuniperContext, T, Q> {
     fn delete(
         context: &C,
         id: T,
     ) -> FieldResult<Q>;
 }
 
-pub trait RootResolver<C: Context, T, Q, S> {
+pub trait RootResolver<C:JuniperContext, T, Q, S> {
     fn resolve_single(
         context: &C,
         id: T,

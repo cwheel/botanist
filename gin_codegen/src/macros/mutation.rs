@@ -9,7 +9,10 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let user_defined_mutations = &ast.items;
 
     if let Type::Path(mutation_type) = *ast.self_ty {
-        let mutations = common::parse_ident_attributes(attrs).map(|model| {
+        let (mutation_models, params) = common::parse_ident_attributes(attrs);
+        let context_ty = params.get("Context").expect("a context must be specified");
+
+        let mutations = mutation_models.map(|model| {
             let graphql_type = common::gql_struct(&model);
 
             let create_mutation_struct = Ident::new(format!("Create{}Input", model).as_ref(), Span::call_site());
@@ -21,15 +24,15 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let delete_mutation = Ident::new(format!("delete{}", model).as_ref(), Span::call_site());
 
             quote! {
-                pub fn #create_mutation(context: &Context, input: #create_mutation_struct) -> FieldResult<#graphql_type> {
+                pub fn #create_mutation(context: &#context_ty, input: #create_mutation_struct) -> FieldResult<#graphql_type> {
                     #create_mutation_struct::create(context, input)
                 }
 
-                pub fn #update_mutation(context: &Context, input: #update_mutation_struct) -> FieldResult<#graphql_type> {
+                pub fn #update_mutation(context: &#context_ty, input: #update_mutation_struct) -> FieldResult<#graphql_type> {
                     #update_mutation_struct::update(context, input)
                 }
 
-                pub fn #delete_mutation(context: &Context, id: Uuid) -> FieldResult<#graphql_type> {
+                pub fn #delete_mutation(context: &#context_ty, id: Uuid) -> FieldResult<#graphql_type> {
                     #graphql_type::delete(context, id)
                 }
             }
@@ -39,7 +42,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
         let gen = quote! {
             use gin::{CreateMutation, UpdateMutation, DeleteMutation};
 
-            #[juniper::object(Context = Context)]
+            #[juniper::object(Context = #context_ty)]
             impl #mutation_type {
                 #( #user_defined_mutations )*
                 #( #mutations )*
