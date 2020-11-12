@@ -10,10 +10,13 @@ use crate::macros::mutation::{
     generate_delete_mutation
 };
 
-pub fn gin_object(input: TokenStream) -> TokenStream {
+pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
     let struct_name = &ast.ident;
     let schema = common::schema_from_struct(&ast).expect("every gin_object to have a table name");
+
+    let (_, params) = common::parse_ident_attributes(attrs);
+    let context_ty = params.get("Context").expect("a context must be specified");
 
     let gql_name = struct_name.to_string();
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
@@ -68,7 +71,7 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &Context, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> FieldResult<Vec<#graphql_type>> {
+                    pub fn #field(&self, context: &#context_ty, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> FieldResult<Vec<#graphql_type>> {
                         if self.#preload_field.borrow().is_some() {
                             Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
@@ -98,7 +101,7 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &Context, executor: &Executor) -> FieldResult<#graphql_type> {
+                    pub fn #field(&self, context: &#context_ty, executor: &Executor) -> FieldResult<#graphql_type> {
                         if self.#preload_field.borrow().is_some() {
                             Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
@@ -114,7 +117,7 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
                 }
             },
             common::TypeRelationship::Field => quote! {
-                pub fn #field(&self, context: &Context) -> &#ty {
+                pub fn #field(&self, context: &#context_ty) -> &#ty {
                     &self.#field
                 }
             },
@@ -301,7 +304,7 @@ pub fn gin_object(input: TokenStream) -> TokenStream {
         }
 
         impl Preloadable<Context, #gql_struct_name> for #gql_struct_name {
-            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &Context, look_ahead: &LookAheadSelection<DefaultScalarValue>) -> Result<(), Error> {
+            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &LookAheadSelection<DefaultScalarValue>) -> Result<(), Error> {
                 use std::collections::HashMap;
                 use std::iter::FromIterator;
 

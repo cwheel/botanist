@@ -7,8 +7,8 @@ mod common;
 mod macros;
 
 #[proc_macro_attribute]
-pub fn gin_object(_: TokenStream, input: TokenStream) -> TokenStream {
-    macros::object::gin_object(input)
+pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
+    macros::object::gin_object(attrs, input)
 }
 
 #[proc_macro_attribute]
