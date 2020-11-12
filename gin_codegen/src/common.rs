@@ -131,36 +131,6 @@ pub fn get_type_info(field: &Ident, model: &Path) -> (Ident, Ident) {
     (preload_field(field), gql_struct_from_model(model))
 }
 
-pub fn parse_tuple_attributes(
-    attrs: TokenStream,
-) -> impl Iterator<Item = impl Iterator<Item = Ident>> {
-    let tuples = proc_macro2::TokenStream::from(attrs).into_iter();
-
-    tuples
-        .map(|tuple| {
-            if let TokenTree::Group(tuple) = tuple {
-                let tuple_group_tokens = tuple.stream().into_iter();
-
-                Some(
-                    tuple_group_tokens
-                        .map(|tuple_token| {
-                            if let TokenTree::Ident(tuple_ident) = tuple_token {
-                                Some(tuple_ident)
-                            } else {
-                                None
-                            }
-                        })
-                        .filter_map(|ident| ident)
-                        .into_iter(),
-                )
-            } else {
-                None
-            }
-        })
-        .filter_map(|tuple| tuple)
-        .into_iter()
-}
-
 pub fn parse_ident_attributes(
     attrs: TokenStream,
 ) -> (impl Iterator<Item = Ident>, HashMap<String, Ident>) {
