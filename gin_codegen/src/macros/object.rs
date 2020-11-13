@@ -71,7 +71,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &#context_ty, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> FieldResult<Vec<#graphql_type>> {
+                    pub fn #field(&self, context: &#context_ty, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
                         if self.#preload_field.borrow().is_some() {
                             Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
@@ -101,7 +101,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &#context_ty, executor: &Executor) -> FieldResult<#graphql_type> {
+                    pub fn #field(&self, context: &#context_ty, executor: &Executor) -> juniper::FieldResult<#graphql_type> {
                         if self.#preload_field.borrow().is_some() {
                             Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
@@ -262,23 +262,30 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     });
 
     // Mutations
-    let create_mutation = generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name);
-    let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name);
-    let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name);
+    let create_mutation = generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
+    let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
+    let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name, &context_ty);
 
     // Query Root Resolvers
-    let root_resolvers = generate_root_resolvers(&struct_name, &schema, &gql_struct_name);
+    let root_resolvers = generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty);
 
     let attrs = &ast.attrs;
     let gen = quote! {
         use diesel::prelude::*;
         use diesel::result::Error;
-        use gin::internal::{__internal__CreateMutation, __internal__UpdateMutation, __internal__DeleteMutation, __internal__Preloadable, __internal__RootResolver};
+        use gin::internal::{
+            __internal__CreateMutation,
+            __internal__UpdateMutation,
+            __internal__DeleteMutation,
+            __internal__Preloadable,
+            __internal__RootResolver
+        };
         use gin::macro_helpers;
         use gin::Context as GinContext;
         use std::cell::RefCell;
 
-        use juniper::{Executor, LookAheadSelection, DefaultScalarValue, LookAheadMethods, LookAheadValue, ScalarValue, FieldResult};
+        use juniper;
+        use juniper::LookAheadMethods;
 
         // Diesel model struct
         #( #attrs )*
@@ -306,7 +313,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl __internal__Preloadable<Context, #gql_struct_name> for #gql_struct_name {
-            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &LookAheadSelection<DefaultScalarValue>) -> Result<(), Error> {
+            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &juniper::LookAheadSelection<juniper::DefaultScalarValue>) -> Result<(), Error> {
                 use std::collections::HashMap;
                 use std::iter::FromIterator;
 

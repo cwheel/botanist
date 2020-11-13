@@ -24,15 +24,15 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let delete_mutation = Ident::new(format!("delete{}", model).as_ref(), Span::call_site());
 
             quote! {
-                pub fn #create_mutation(context: &#context_ty, input: #create_mutation_struct) -> FieldResult<#graphql_type> {
+                pub fn #create_mutation(context: &#context_ty, input: #create_mutation_struct) -> juniper::FieldResult<#graphql_type> {
                     #create_mutation_struct::create(context, input)
                 }
 
-                pub fn #update_mutation(context: &#context_ty, input: #update_mutation_struct) -> FieldResult<#graphql_type> {
+                pub fn #update_mutation(context: &#context_ty, input: #update_mutation_struct) -> juniper::FieldResult<#graphql_type> {
                     #update_mutation_struct::update(context, input)
                 }
 
-                pub fn #delete_mutation(context: &#context_ty, id: Uuid) -> FieldResult<#graphql_type> {
+                pub fn #delete_mutation(context: &#context_ty, id: Uuid) -> juniper::FieldResult<#graphql_type> {
                     #graphql_type::delete(context, id)
                 }
             }
@@ -55,7 +55,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
     panic!("Attempted to implement gin_mutation on invalid mutation type!");
 }
 
-pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident) -> Option<proc_macro2::TokenStream> {
+pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident, context: &Ident) -> Option<proc_macro2::TokenStream> {
     let create_mutation_struct = Ident::new(format!("Create{}Input", struct_name).as_ref(), Span::call_site());
     let create_mutation_struct_name = format!("New{}", struct_name);
 
@@ -88,7 +88,7 @@ pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
                 }
 
                 impl __internal__CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
-                    fn create(context: &Context, self_model: #create_mutation_struct) -> FieldResult<#gql_struct_name> {
+                    fn create(context: &#context, self_model: #create_mutation_struct) -> juniper::FieldResult<#gql_struct_name> {
                         diesel::insert_into(#schema::table)
                             .values(&self_model)
                             .get_result(context.get_connection())
@@ -103,7 +103,7 @@ pub fn generate_create_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
     }
 }
 
-pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident) -> Option<proc_macro2::TokenStream> {
+pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident, context: &Ident) -> Option<proc_macro2::TokenStream> {
     let update_mutation_struct = Ident::new(format!("Update{}Input", struct_name).as_ref(), Span::call_site());
     let update_mutation_struct_name = format!("{}Update", struct_name);
 
@@ -142,8 +142,8 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
                     #( #tokenized_create_mutation_fields, )*
                 }
 
-                impl __internal__UpdateMutation<Context, #update_mutation_struct, #gql_struct_name> for #update_mutation_struct {
-                    fn update(context: &Context, self_model: #update_mutation_struct) -> FieldResult<#gql_struct_name> {
+                impl __internal__UpdateMutation<#context, #update_mutation_struct, #gql_struct_name> for #update_mutation_struct {
+                    fn update(context: &#context, self_model: #update_mutation_struct) -> juniper::FieldResult<#gql_struct_name> {
                         diesel::update(
                             #schema::table.filter(#schema::id.eq(&self_model.id))
                         )
@@ -160,10 +160,10 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
     }
 }
 
-pub fn generate_delete_mutation(struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident) -> proc_macro2::TokenStream {
+pub fn generate_delete_mutation(struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident, context: &Ident) -> proc_macro2::TokenStream {
     quote! {
-        impl __internal__DeleteMutation<Context, Uuid, #gql_struct_name> for #gql_struct_name {
-            fn delete(context: &Context, id: Uuid) -> FieldResult<#gql_struct_name> {
+        impl __internal__DeleteMutation<#context, Uuid, #gql_struct_name> for #gql_struct_name {
+            fn delete(context: &#context, id: Uuid) -> juniper::FieldResult<#gql_struct_name> {
                 diesel::delete(
                     #schema::table.filter(#schema::id.eq(id))
                 )
