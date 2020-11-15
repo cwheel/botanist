@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
-use syn::DeriveInput;
+use syn::{DeriveInput, Type};
 
 use crate::common;
 use crate::macros::query::{generate_root_resolvers};
@@ -22,6 +22,20 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
 
     let struct_fields = common::typed_struct_fields_from_ast(&ast);
+
+    // What kind of primary key are we using
+    let id_ty = common::typed_struct_fields_from_ast(&ast)
+        .iter()
+        .filter_map(|(ident, ty, _)| if ident.to_string() == "id" {
+            Some(ty.clone())
+        } else {
+            None
+        })
+    .collect::<Vec<&Type>>()[0];
+    // .first()
+    // .iter()
+    // .expect("gin_object must have an id field");
+    
 
     // Fields for the model and GQL structs
     let tokenized_fields =
@@ -197,7 +211,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                 let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
-                                let distinct_id_to_model: HashMap<&Uuid, #model> = HashMap::from_iter(distinct_ids.iter().zip(models.into_iter()));
+                                let distinct_id_to_model: HashMap<&#id_ty, #model> = HashMap::from_iter(distinct_ids.iter().zip(models.into_iter()));
 
                                 for self_model in self_models.iter() {
                                     if let Some(child_model) = distinct_id_to_model.get(&self_model.#field) {
@@ -235,7 +249,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                 let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
-                                let mut forign_key_to_models: HashMap<&Uuid, Vec<#model>> = HashMap::new();
+                                let mut forign_key_to_models: HashMap<&#id_ty, Vec<#model>> = HashMap::new();
                                 for model in models.iter() {
                                     forign_key_to_models
                                         .entry(&model.#forign_key)
@@ -264,10 +278,10 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     // Mutations
     let create_mutation = generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
     let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
-    let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name, &context_ty);
+    let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
 
     // Query Root Resolvers
-    let root_resolvers = generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty);
+    let root_resolvers = generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
 
     let attrs = &ast.attrs;
     let gen = quote! {
@@ -317,7 +331,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 use std::collections::HashMap;
                 use std::iter::FromIterator;
 
-                let mut type_to_ids: HashMap<&str, Vec<Uuid>> = HashMap::new();
+                let mut type_to_ids: HashMap<&str, Vec<#id_ty>> = HashMap::new();
 
                 for self_model in self_models.iter() {
                     #( #id_extractors )*

@@ -11,6 +11,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
     if let Type::Path(mutation_type) = *ast.self_ty {
         let (mutation_models, params) = common::parse_ident_attributes(attrs);
         let context_ty = params.get("Context").expect("a context must be specified");
+        let primary_key_ty = params.get("PrimaryKey").expect("a primary key type must be specified");
 
         let mutations = mutation_models.map(|model| {
             let graphql_type = common::gql_struct(&model);
@@ -32,7 +33,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     #update_mutation_struct::update(context, input)
                 }
 
-                pub fn #delete_mutation(context: &#context_ty, id: Uuid) -> juniper::FieldResult<#graphql_type> {
+                pub fn #delete_mutation(context: &#context_ty, id: #primary_key_ty) -> juniper::FieldResult<#graphql_type> {
                     #graphql_type::delete(context, id)
                 }
             }
@@ -160,10 +161,10 @@ pub fn generate_update_mutation(ast: &DeriveInput, struct_name: &Ident, schema: 
     }
 }
 
-pub fn generate_delete_mutation(struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident, context: &Ident) -> proc_macro2::TokenStream {
+pub fn generate_delete_mutation(struct_name: &Ident, schema: &Ident, gql_struct_name: &Ident, context: &Ident, id_type: &Type) -> proc_macro2::TokenStream {
     quote! {
-        impl __internal__DeleteMutation<#context, Uuid, #gql_struct_name> for #gql_struct_name {
-            fn delete(context: &#context, id: Uuid) -> juniper::FieldResult<#gql_struct_name> {
+        impl __internal__DeleteMutation<#context, #id_type, #gql_struct_name> for #gql_struct_name {
+            fn delete(context: &#context, id: #id_type) -> juniper::FieldResult<#gql_struct_name> {
                 diesel::delete(
                     #schema::table.filter(#schema::id.eq(id))
                 )

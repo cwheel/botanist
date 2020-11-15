@@ -11,6 +11,7 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
     if let Type::Path(query_type) = *ast.self_ty {
         let (query_models, params) = common::parse_ident_attributes(attrs);
         let context_ty = params.get("Context").expect("a context must be specified");
+        let primary_key_ty = params.get("PrimaryKey").expect("a primary key type must be specified");
     
         let root_resolvers = query_models.map(|model| {
             let graphql_type = common::gql_struct(&model);
@@ -18,11 +19,11 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let plural = Ident::new(format!("{}s", singular).as_ref(), Span::call_site());
 
             quote! {
-                fn #singular(context: &#context_ty, id: Uuid) -> juniper::FieldResult<#graphql_type> {
+                fn #singular(context: &#context_ty, id: #primary_key_ty) -> juniper::FieldResult<#graphql_type> {
                     #model::resolve_single(context, id)
                 }
 
-                fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<Uuid>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+                fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<#primary_key_ty>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
                     #model::resolve_multiple(context, executor, ids, first, offset)
                 }
             }
@@ -45,10 +46,10 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
     panic!("Attempted to implement gin_query on invalid query type!");
 }
 
-pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ident, context: &Ident) -> proc_macro2::TokenStream {
+pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ident, context: &Ident, id_type: &Type) -> proc_macro2::TokenStream {
     quote! {
-        impl __internal__RootResolver<#context, Uuid, #graphql_type, juniper::DefaultScalarValue> for #model {
-            fn resolve_single(context: &Context, id: Uuid) -> juniper::FieldResult<#graphql_type> {
+        impl __internal__RootResolver<#context, #id_type, #graphql_type, juniper::DefaultScalarValue> for #model {
+            fn resolve_single(context: &Context, id: #id_type) -> juniper::FieldResult<#graphql_type> {
                 #schema::table
                         .filter(#schema::id.eq(id))
                         .get_result::<#model>(context.get_connection())
@@ -58,7 +59,7 @@ pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ide
                         )
             }
         
-            fn resolve_multiple(context: &#context, executor: &juniper::Executor<#context, juniper::DefaultScalarValue>, ids: Vec<Uuid>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+            fn resolve_multiple(context: &#context, executor: &juniper::Executor<#context, juniper::DefaultScalarValue>, ids: Vec<#id_type>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
                 #schema::table
                     .filter(#schema::id.eq_any(&*ids))
                     .limit(first.unwrap_or(10) as i64)
