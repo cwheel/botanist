@@ -17,9 +17,11 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let (_, params) = common::parse_ident_attributes(attrs);
     let context_ty = params.get("Context").expect("a context must be specified");
+    let modifies_query = params.get("ModifiesQuery").map(|ident| ident.to_string() == "true").unwrap_or(false);
 
     let gql_name = struct_name.to_string();
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
+    let query_ty = Ident::new(format!("{}Query", struct_name).as_ref(), Span::call_site());
 
     let struct_fields = common::typed_struct_fields_from_ast(&ast);
 
@@ -32,10 +34,6 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             None
         })
     .collect::<Vec<&Type>>()[0];
-    // .first()
-    // .iter()
-    // .expect("gin_object must have an id field");
-    
 
     // Fields for the model and GQL structs
     let tokenized_fields =
@@ -275,6 +273,16 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
     });
 
+    let query_modifier = if modifies_query {
+        quote! {
+            #struct_name::modify_query(query)
+        }
+    } else {
+        quote! {
+            query
+        }
+    };
+
     // Mutations
     let create_mutation = generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
     let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
@@ -286,13 +294,14 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let attrs = &ast.attrs;
     let gen = quote! {
         use diesel::prelude::*;
-        use diesel::result::Error;
+
         use gin::internal::{
             __internal__CreateMutation,
             __internal__UpdateMutation,
             __internal__DeleteMutation,
             __internal__Preloadable,
-            __internal__RootResolver
+            __internal__RootResolver,
+            __internal__QueryModifier,
         };
         use gin::macro_helpers;
         use gin::Context as GinContext;
@@ -305,6 +314,13 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         #( #attrs )*
         pub struct #struct_name {
             #( #tokenized_fields, )*
+        }
+
+        type #query_ty<'a> = #schema::BoxedQuery<'a, <#context_ty as GinContext>::DB>;
+        impl<'a> __internal__QueryModifier<#query_ty<'a>> for #struct_name {
+            fn maybe_modify_query(query: #query_ty<'a>) -> #query_ty<'a> {
+                #query_modifier
+            }
         }
 
         // Juniper struct
@@ -327,7 +343,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl __internal__Preloadable<Context, #gql_struct_name> for #gql_struct_name {
-            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &juniper::LookAheadSelection<juniper::DefaultScalarValue>) -> Result<(), Error> {
+            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &juniper::LookAheadSelection<juniper::DefaultScalarValue>) -> Result<(), diesel::result::Error> {
                 use std::collections::HashMap;
                 use std::iter::FromIterator;
 

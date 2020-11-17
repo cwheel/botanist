@@ -1,3 +1,4 @@
+use diesel::query_builder::BoxedSelectStatement;
 use std::marker::PhantomData;
 
 pub mod macro_helpers;
@@ -17,6 +18,13 @@ pub struct HasMany<S, F, M> {
     model: PhantomData<M>,
 }
 
-pub trait Context<C> {
-    fn get_connection<'a>(&'a self) -> &'a C;
+pub trait Context {
+    type DB;
+    type Connection;
+
+    fn get_connection<'a>(&'a self) -> &'a Self::Connection;
+}
+
+pub trait QueryModifier<T> {
+    fn modify_query(query: T) -> T;
 }
