@@ -273,9 +273,10 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
     });
 
+    // Top level query modifier stub, if ModifiesQuery isn't set, this just returns the query
     let query_modifier = if modifies_query {
         quote! {
-            #struct_name::modify_query(query)
+            #struct_name::modify_query(query, context)
         }
     } else {
         quote! {
@@ -317,8 +318,8 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         type #query_ty<'a> = #schema::BoxedQuery<'a, <#context_ty as GinContext>::DB>;
-        impl<'a> __internal__QueryModifier<#query_ty<'a>> for #struct_name {
-            fn maybe_modify_query(query: #query_ty<'a>) -> #query_ty<'a> {
+        impl<'a> __internal__QueryModifier<#query_ty<'a>, #context_ty> for #struct_name {
+            fn maybe_modify_query(query: #query_ty<'a>, context: &#context_ty) -> #query_ty<'a> {
                 #query_modifier
             }
         }

@@ -53,7 +53,8 @@ pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ide
                     #model::maybe_modify_query(
                         #schema::table
                             .filter(#schema::id.eq(id))
-                            .into_boxed()
+                            .into_boxed(),
+                        context
                     )
                     .get_result::<#model>(context.get_connection())
                     .map_or_else(
@@ -68,7 +69,8 @@ pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ide
                         .filter(#schema::id.eq_any(&*ids))
                         .limit(first.unwrap_or(10) as i64)
                         .offset(offset.unwrap_or(0) as i64)
-                        .into_boxed()
+                        .into_boxed(),
+                    context
                 )
                 .load::<#model>(context.get_connection())
                 .map_or_else(

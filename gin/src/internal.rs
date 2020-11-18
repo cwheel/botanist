@@ -50,6 +50,6 @@ pub trait __internal__RootResolver<C: JuniperContext + GinContext, T, Q, S> {
     ) -> FieldResult<Vec<Q>>;
 }
 
-pub trait __internal__QueryModifier<T> {
-    fn maybe_modify_query(query: T) -> T;
+pub trait __internal__QueryModifier<T, C: JuniperContext + GinContext > {
+    fn maybe_modify_query(query: T, context: &C) -> T;
 }

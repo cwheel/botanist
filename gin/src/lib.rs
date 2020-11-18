@@ -1,4 +1,3 @@
-use diesel::query_builder::BoxedSelectStatement;
 use std::marker::PhantomData;
 
 pub mod macro_helpers;
@@ -25,6 +24,6 @@ pub trait Context {
     fn get_connection<'a>(&'a self) -> &'a Self::Connection;
 }
 
-pub trait QueryModifier<T> {
-    fn modify_query(query: T) -> T;
+pub trait QueryModifier<T, C: Context> {
+    fn modify_query(query: T, context: &C) -> T;
 }
