@@ -1,8 +1,7 @@
 #![allow(non_camel_case_types)]
 
-use diesel::query_builder::BoxedSelectStatement;
 use diesel::result::Error;
-use juniper::{DefaultScalarValue, LookAheadSelection, FieldResult, Executor};
+use juniper::{DefaultScalarValue, LookAheadSelection, FieldResult, FieldError, Executor};
 use juniper::Context as JuniperContext;
 use crate::Context as GinContext;
 
@@ -51,5 +50,5 @@ pub trait __internal__RootResolver<C: JuniperContext + GinContext, T, Q, S> {
 }
 
 pub trait __internal__QueryModifier<T, C: JuniperContext + GinContext > {
-    fn maybe_modify_query(query: T, context: &C) -> T;
+    fn maybe_modify_query(query: T, context: &C) -> Result<T, FieldError>;
 }

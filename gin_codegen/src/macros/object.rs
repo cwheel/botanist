@@ -280,7 +280,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
     } else {
         quote! {
-            query
+            Ok(query)
         }
     };
 
@@ -319,7 +319,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
         type #query_ty<'a> = #schema::BoxedQuery<'a, <#context_ty as GinContext>::DB>;
         impl<'a> __internal__QueryModifier<#query_ty<'a>, #context_ty> for #struct_name {
-            fn maybe_modify_query(query: #query_ty<'a>, context: &#context_ty) -> #query_ty<'a> {
+            fn maybe_modify_query(query: #query_ty<'a>, context: &#context_ty) -> Result<#query_ty<'a>, juniper::FieldError> {
                 #query_modifier
             }
         }

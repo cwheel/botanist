@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use juniper::FieldError;
 
 pub mod macro_helpers;
 pub mod internal;
@@ -25,5 +26,5 @@ pub trait Context {
 }
 
 pub trait QueryModifier<T, C: Context> {
-    fn modify_query(query: T, context: &C) -> T;
+    fn modify_query(query: T, context: &C) -> Result<T, FieldError>;
 }
