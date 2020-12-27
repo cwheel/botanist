@@ -206,14 +206,14 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                     .filter(#schema::id.eq_any(&*distinct_ids))
                                     .load::<#model>(context.get_connection())?;
 
-                                let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                                let gql_models = models.into_iter().map(|model| #graphql_type::from(model)).collect::<Vec<#graphql_type>>();
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
-                                let distinct_id_to_model: HashMap<&#id_ty, #model> = HashMap::from_iter(distinct_ids.iter().zip(models.into_iter()));
+                                let distinct_id_to_gql_model: HashMap<&#id_ty, #graphql_type> = HashMap::from_iter(distinct_ids.iter().zip(gql_models.into_iter()));
 
                                 for self_model in self_models.iter() {
-                                    if let Some(child_model) = distinct_id_to_model.get(&self_model.#field) {
-                                        self_model.#preload_field.replace_with(|_| Some(#graphql_type::from(child_model.clone())));
+                                    if let Some(child_model) = distinct_id_to_gql_model.get(&self_model.#field) {
+                                        self_model.#preload_field.replace_with(|_| Some(child_model.clone()));
                                     }
                                 }
                             }
@@ -244,23 +244,22 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                     .offset(offset as i64)
                                     .load::<#model>(context.get_connection())?;
 
-                                let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
+                                let gql_models = models.into_iter().map(|model| #graphql_type::from(model)).collect::<Vec<#graphql_type>>();
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
-                                let mut forign_key_to_models: HashMap<&#id_ty, Vec<#model>> = HashMap::new();
-                                for model in models.iter() {
+                                let mut forign_key_to_models: HashMap<#id_ty, Vec<#graphql_type>> = HashMap::new();
+                                
+                                for model in gql_models.into_iter() {
                                     forign_key_to_models
-                                        .entry(&model.#forign_key)
+                                        .entry(model.#forign_key.clone())
                                         .or_insert(Vec::new())
-                                        .push(model.to_owned());
+                                        .push(model);
                                 }
 
                                 for self_model in self_models.iter() {
                                     if let Some(child_models) = forign_key_to_models.get(&self_model.id) {
                                         self_model.#preload_field.replace_with(
-                                            |_| Some(
-                                                child_models.into_iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>()
-                                            )
+                                            |_| Some(child_models.clone())
                                         );
                                     }
                                 }
@@ -273,14 +272,16 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
     });
 
-    // Top level query modifier stub, if ModifiesQuery isn't set, this just returns the query
+    // Top level query modifier stub, if ModifiesQuery isn't set, provide a default implementation
     let query_modifier = if modifies_query {
-        quote! {
-            #struct_name::modify_query(query, context)
-        }
+        quote! {}
     } else {
         quote! {
-            Ok(query)
+           impl<'a> __internal__DefaultQueryModifier<#query_ty<'a>, #context_ty> for #struct_name {
+                fn modify_query(query: #query_ty<'a>, context: &#context_ty) -> Result<#query_ty<'a>, juniper::FieldError> {
+                       Ok(query)
+                }
+           }
         }
     };
 
@@ -302,7 +303,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             __internal__DeleteMutation,
             __internal__Preloadable,
             __internal__RootResolver,
-            __internal__QueryModifier,
+            __internal__DefaultQueryModifier,
         };
         use gin::macro_helpers;
         use gin::Context as GinContext;
@@ -317,14 +318,12 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             #( #tokenized_fields, )*
         }
 
+        // Useful query type alias and default modifier (if the user isn't specifying one)
         type #query_ty<'a> = #schema::BoxedQuery<'a, <#context_ty as GinContext>::DB>;
-        impl<'a> __internal__QueryModifier<#query_ty<'a>, #context_ty> for #struct_name {
-            fn maybe_modify_query(query: #query_ty<'a>, context: &#context_ty) -> Result<#query_ty<'a>, juniper::FieldError> {
-                #query_modifier
-            }
-        }
+        #query_modifier
 
         // Juniper struct
+        #[derive(Clone)]
         pub struct #gql_struct_name {
             #( #tokenized_fields, )*
             #( #preloader_fields, )*

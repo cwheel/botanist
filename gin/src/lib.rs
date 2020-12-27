@@ -25,6 +25,6 @@ pub trait Context {
     fn get_connection<'a>(&'a self) -> &'a Self::Connection;
 }
 
-pub trait QueryModifier<T, C: Context> {
-    fn modify_query(query: T, context: &C) -> Result<T, FieldError>;
+pub trait QueryModifier<T, R, C: Context> {
+    fn modify_query(query: T, context: &C) -> Result<R, FieldError>;
 }

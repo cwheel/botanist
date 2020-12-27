@@ -50,7 +50,7 @@ pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ide
     quote! {
         impl __internal__RootResolver<#context, #id_type, #graphql_type, juniper::DefaultScalarValue> for #model {
             fn resolve_single(context: &Context, id: #id_type) -> juniper::FieldResult<#graphql_type> {
-                    match #model::maybe_modify_query(
+                    match #model::modify_query(
                         #schema::table
                             .filter(#schema::id.eq(id))
                             .into_boxed(),
@@ -70,7 +70,7 @@ pub fn generate_root_resolvers(model: &Ident, schema: &Ident, graphql_type: &Ide
             }
         
             fn resolve_multiple(context: &#context, executor: &juniper::Executor<#context, juniper::DefaultScalarValue>, ids: Vec<#id_type>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                match #model::maybe_modify_query(
+                match #model::modify_query(
                     #schema::table
                         .filter(#schema::id.eq_any(&*ids))
                         .limit(first.unwrap_or(10) as i64)

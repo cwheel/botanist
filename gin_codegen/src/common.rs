@@ -66,7 +66,7 @@ pub fn type_relationship(ty: &Type) -> TypeRelationship {
                 return match relation {
                     IterationTypeRelationship::Field => TypeRelationship::Field,
                     IterationTypeRelationship::HasOne => {
-                        let generics = generics
+                        let mut generics = generics
                             .args
                             .iter()
                             .map(|generic| {
@@ -80,14 +80,18 @@ pub fn type_relationship(ty: &Type) -> TypeRelationship {
                             })
                             .collect::<Vec<Path>>();
 
+                        let model = generics.remove(2);
+                        let schema = generics.remove(1);
+                        let id_ty = generics.remove(0);
+
                         TypeRelationship::HasOne(
-                            generics[0].clone(),
-                            generics[1].clone(),
-                            generics[2].clone(),
+                            id_ty,
+                            schema,
+                            model
                         )
                     }
                     IterationTypeRelationship::HasMany => {
-                        let generics = generics
+                        let mut generics = generics
                             .args
                             .iter()
                             .map(|generic| {
@@ -101,10 +105,14 @@ pub fn type_relationship(ty: &Type) -> TypeRelationship {
                             })
                             .collect::<Vec<Path>>();
 
+                        let model = generics.remove(2);
+                        let fk_column = generics.remove(1);
+                        let schema = generics.remove(0);
+
                         TypeRelationship::HasMany(
-                            generics[0].clone(),
-                            generics[1].clone(),
-                            generics[2].clone(),
+                            schema,
+                            fk_column,
+                            model
                         )
                     }
                 };
