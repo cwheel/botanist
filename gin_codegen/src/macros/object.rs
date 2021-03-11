@@ -3,12 +3,10 @@ use proc_macro2::{Ident, Span};
 use syn::{DeriveInput, Type};
 
 use crate::common;
-use crate::macros::query::{generate_root_resolvers};
 use crate::macros::mutation::{
-    generate_create_mutation,
-    generate_update_mutation,
-    generate_delete_mutation
+    generate_create_mutation, generate_delete_mutation, generate_update_mutation,
 };
+use crate::macros::query::generate_root_resolvers;
 
 pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
@@ -16,8 +14,14 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let schema = common::schema_from_struct(&ast).expect("every gin_object must have a table name");
 
     let (_, params) = common::parse_ident_attributes(attrs);
-    let context_ty = params.get("Context").expect("a context must be specified");
-    let modifies_query = params.get("ModifiesQuery").map(|ident| ident.to_string() == "true").unwrap_or(false);
+    let context_ty = &params
+        .get("Context")
+        .expect("a context must be specified")
+        .ident;
+    let modifies_query = params
+        .get("ModifiesQuery")
+        .map(|token| token.ident.to_string() == "true")
+        .unwrap_or(false);
 
     let gql_name = struct_name.to_string();
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
@@ -28,12 +32,14 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     // What kind of primary key are we using
     let id_ty = common::typed_struct_fields_from_ast(&ast)
         .iter()
-        .filter_map(|(ident, ty, _)| if ident.to_string() == "id" {
-            Some(ty.clone())
-        } else {
-            None
+        .filter_map(|(ident, ty, _)| {
+            if ident.to_string() == "id" {
+                Some(ty.clone())
+            } else {
+                None
+            }
         })
-    .collect::<Vec<&Type>>()[0];
+        .collect::<Vec<&Type>>()[0];
 
     // Fields for the model and GQL structs
     let tokenized_fields =
@@ -286,12 +292,16 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Mutations
-    let create_mutation = generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
-    let update_mutation = generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
-    let delete_mutation = generate_delete_mutation(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
+    let create_mutation =
+        generate_create_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
+    let update_mutation =
+        generate_update_mutation(&ast, &struct_name, &schema, &gql_struct_name, &context_ty);
+    let delete_mutation =
+        generate_delete_mutation(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
 
     // Query Root Resolvers
-    let root_resolvers = generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
+    let root_resolvers =
+        generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
 
     let attrs = &ast.attrs;
     let gen = quote! {

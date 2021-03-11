@@ -1,8 +1,13 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
-use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenTree};
+use std::rc::Rc;
 
-use syn::{Attribute, Data, DeriveInput, GenericArgument, Ident, Path, PathArguments, Type, Meta, Lit};
+use proc_macro::TokenStream;
+use proc_macro2::{Delimiter, Span, TokenTree};
+
+use syn::{
+    Attribute, Data, DeriveInput, GenericArgument, Ident, Lit, Meta, Path, PathArguments, Type,
+};
 
 pub enum TypeRelationship {
     HasMany(Path, Path, Path),
@@ -14,6 +19,37 @@ enum IterationTypeRelationship {
     HasMany,
     HasOne,
     Field,
+}
+
+pub struct AttributeToken {
+    pub ident: Ident,
+    pub arguments: HashMap<String, AttributeToken>,
+}
+
+#[derive(Debug)]
+pub struct InternalAttributeToken {
+    pub ident: Ident,
+    pub arguments: HashMap<String, Rc<RefCell<InternalAttributeToken>>>,
+}
+
+impl InternalAttributeToken {
+    pub fn to_attribute_token(token: InternalAttributeToken) -> AttributeToken {
+        AttributeToken {
+            ident: token.ident.clone(),
+            arguments: token
+                .arguments
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        InternalAttributeToken::to_attribute_token(
+                            Rc::try_unwrap(v).unwrap().into_inner(),
+                        ),
+                    )
+                })
+                .collect::<HashMap<String, AttributeToken>>(),
+        }
+    }
 }
 
 pub fn typed_struct_fields_from_ast<'a>(
@@ -84,11 +120,7 @@ pub fn type_relationship(ty: &Type) -> TypeRelationship {
                         let schema = generics.remove(1);
                         let id_ty = generics.remove(0);
 
-                        TypeRelationship::HasOne(
-                            id_ty,
-                            schema,
-                            model
-                        )
+                        TypeRelationship::HasOne(id_ty, schema, model)
                     }
                     IterationTypeRelationship::HasMany => {
                         let mut generics = generics
@@ -109,11 +141,7 @@ pub fn type_relationship(ty: &Type) -> TypeRelationship {
                         let fk_column = generics.remove(1);
                         let schema = generics.remove(0);
 
-                        TypeRelationship::HasMany(
-                            schema,
-                            fk_column,
-                            model
-                        )
+                        TypeRelationship::HasMany(schema, fk_column, model)
                     }
                 };
             }
@@ -141,20 +169,77 @@ pub fn get_type_info(field: &Ident, model: &Path) -> (Ident, Ident) {
 
 pub fn parse_ident_attributes(
     attrs: TokenStream,
-) -> (impl Iterator<Item = Ident>, HashMap<String, Ident>) {
-    let idents = proc_macro2::TokenStream::from(attrs).into_iter();
-    let mut named_values: HashMap<String, Ident> = HashMap::new();
-    let mut unnamed_values: Vec<Ident> = Vec::new();
+) -> (
+    impl Iterator<Item = AttributeToken>,
+    HashMap<String, AttributeToken>,
+) {
+    let (unnamed_values, named_values) = parse_ident_attributes_from_stream(attrs);
 
+    (
+        unnamed_values.into_iter().map(|v| {
+            InternalAttributeToken::to_attribute_token(Rc::try_unwrap(v).unwrap().into_inner())
+        }),
+        named_values
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    InternalAttributeToken::to_attribute_token(
+                        Rc::try_unwrap(v).unwrap().into_inner(),
+                    ),
+                )
+            })
+            .collect::<HashMap<String, AttributeToken>>(),
+    )
+}
+
+pub fn parse_ident_attributes_from_stream(
+    attrs: TokenStream,
+) -> (
+    impl Iterator<Item = Rc<RefCell<InternalAttributeToken>>>,
+    HashMap<String, Rc<RefCell<InternalAttributeToken>>>,
+) {
+    let idents = proc_macro2::TokenStream::from(attrs).into_iter();
+
+    let mut named_values: HashMap<String, Rc<RefCell<InternalAttributeToken>>> = HashMap::new();
+    let mut unnamed_values: Vec<Rc<RefCell<InternalAttributeToken>>> = Vec::new();
+
+    let mut last_token: Option<Rc<RefCell<InternalAttributeToken>>> = None;
     let mut in_expr = false;
 
     for ident in idents {
         if let TokenTree::Ident(ident) = ident {
             if in_expr {
-                named_values.insert(unnamed_values.pop().unwrap().to_string(), ident);
+                let last_attr_token = unnamed_values.pop().unwrap();
+                let name = last_attr_token.borrow().ident.to_string();
+
+                named_values.insert(
+                    name.clone(),
+                    Rc::new(RefCell::new(InternalAttributeToken {
+                        ident,
+                        arguments: HashMap::new(),
+                    })),
+                );
+
+                last_token = Some(Rc::clone(named_values.get(&name).unwrap()));
                 in_expr = false;
             } else {
-                unnamed_values.push(ident);
+                unnamed_values.push(Rc::new(RefCell::new(InternalAttributeToken {
+                    ident,
+                    arguments: HashMap::new(),
+                })));
+
+                last_token = Some(Rc::clone(unnamed_values.last().unwrap()));
+            }
+        } else if let TokenTree::Group(group) = ident {
+            if group.delimiter() == Delimiter::Parenthesis {
+                let (_, arguments) = parse_ident_attributes_from_stream(group.stream().into());
+
+                if let Some(last_token) = last_token {
+                    last_token.borrow_mut().arguments = arguments;
+                }
+
+                last_token = None;
             }
         } else if let TokenTree::Punct(character) = ident {
             let raw_char = character.as_char();
@@ -164,6 +249,27 @@ pub fn parse_ident_attributes(
             } else if raw_char != ',' {
                 panic!("Unexpected punctuation in attribute!");
             }
+        } else if let TokenTree::Literal(lit) = ident {
+            if !in_expr {
+                panic!("Unexpected literal, literals must be named!");
+            }
+
+            // Literals are always treated as a string :shrug:
+            let str_value = lit.to_string().replace("\"", "");
+
+            let last_attr_token = unnamed_values.pop().unwrap();
+            let name = last_attr_token.borrow().ident.to_string();
+
+            named_values.insert(
+                name.clone(),
+                Rc::new(RefCell::new(InternalAttributeToken {
+                    ident: Ident::new(&str_value, Span::call_site()),
+                    arguments: HashMap::new(),
+                })),
+            );
+
+            last_token = Some(Rc::clone(named_values.get(&name).unwrap()));
+            in_expr = false;
         } else {
             panic!("Unexpected token in attribute!");
         }
@@ -192,4 +298,14 @@ pub fn schema_from_struct(ast: &DeriveInput) -> Option<Ident> {
             Err(_) => None,
         })
         .unwrap()
+}
+
+pub fn lower_first(input: &str) -> String {
+    let first = input
+        .chars()
+        .next()
+        .unwrap_or(' ')
+        .to_string()
+        .to_lowercase();
+    first + &input[1..]
 }

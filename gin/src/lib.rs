@@ -1,8 +1,8 @@
-use std::marker::PhantomData;
 use juniper::FieldError;
+use std::marker::PhantomData;
 
-pub mod macro_helpers;
 pub mod internal;
+pub mod macro_helpers;
 
 #[derive(Debug, Clone)]
 pub struct HasOne<T, S, M> {
