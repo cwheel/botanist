@@ -89,13 +89,13 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &#context_ty, executor: &Executor, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+                    pub fn #field(&self, context: &#context_ty, executor: &Executor, limit: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
                         if self.#preload_field.borrow().is_some() {
                             Ok(self.#preload_field.replace_with(|_| None).unwrap())
                         } else {
                             #schema::table
                                 .filter(#forign_key.eq(&self.id))
-                                .limit(first.unwrap_or(10) as i64)
+                                .limit(limit.unwrap_or(10) as i64)
                                 .offset(offset.unwrap_or(0) as i64)
                                 .load::<#model>(context.get_connection())
                                 .map_or_else(
@@ -241,12 +241,12 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                 forign_key_ids.sort();
                                 forign_key_ids.dedup();
 
-                                let first = macro_helpers::int_argument_from_look_ahead(look_ahead, "first", 10);
+                                let limit = macro_helpers::int_argument_from_look_ahead(look_ahead, "limit", 10);
                                 let offset = macro_helpers::int_argument_from_look_ahead(look_ahead, "offset", 0);
 
                                 let models = #schema::table
                                     .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
-                                    .limit(first as i64)
+                                    .limit(limit as i64)
                                     .offset(offset as i64)
                                     .load::<#model>(context.get_connection())?;
 

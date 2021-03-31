@@ -32,7 +32,7 @@ pub trait __internal__RootResolver<C: JuniperContext + GinContext, T, Q, S> {
         context: &C,
         executor: &Executor<C, S>,
         ids: Option<Vec<T>>,
-        first: Option<i32>,
+        limit: Option<i32>,
         offset: Option<i32>,
     ) -> FieldResult<Vec<Q>>;
 }

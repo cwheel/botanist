@@ -30,14 +30,14 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
             let plural_resolver = if can_fetch_all {
                 quote! {
-                    fn #plural(context: &#context_ty, executor: &Executor, ids: Option<Vec<#primary_key_ty>>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                        #model::resolve_multiple(context, executor, ids, first, offset)
+                    fn #plural(context: &#context_ty, executor: &Executor, ids: Option<Vec<#primary_key_ty>>, limit: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        #model::resolve_multiple(context, executor, ids, limit, offset)
                     }
                 }
             } else {
                 quote! {
-                    fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<#primary_key_ty>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                        #model::resolve_multiple(context, executor, Some(ids), first, offset)
+                    fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<#primary_key_ty>, limit: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        #model::resolve_multiple(context, executor, Some(ids), limit, offset)
                     }
                 }
             };
@@ -101,17 +101,17 @@ pub fn generate_root_resolvers(
                 context: &#context,
                 executor: &juniper::Executor<#context, juniper::DefaultScalarValue>,
                 ids: Option<Vec<#id_type>>,
-                first: Option<i32>,
+                limit: Option<i32>,
                 offset: Option<i32>,
             ) -> juniper::FieldResult<Vec<#graphql_type>> {
                 let query = if let Some(ids) = ids {
                     #schema::table.filter(#schema::id.eq_any(ids))
-                        .limit(first.unwrap_or(10) as i64)
+                        .limit(limit.unwrap_or(10) as i64)
                         .offset(offset.unwrap_or(0) as i64)
                         .into_boxed()
                 } else {
                     #schema::table.select(#schema::all_columns)
-                        .limit(first.unwrap_or(10) as i64)
+                        .limit(limit.unwrap_or(10) as i64)
                         .offset(offset.unwrap_or(0) as i64)
                         .into_boxed()
                 };
