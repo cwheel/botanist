@@ -26,15 +26,28 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
             let singular = Ident::new(common::lower_first(&model_name).as_ref(), Span::call_site());
             let plural = rich_model.arguments.get("plural").map(|token| token.ident.clone()).unwrap_or(Ident::new(format!("{}s", singular).as_ref(), Span::call_site()));
+            let can_fetch_all = rich_model.arguments.get("all").map(|token| token.ident == "true").unwrap_or(false);
+
+            let plural_resolver = if can_fetch_all {
+                quote! {
+                    fn #plural(context: &#context_ty, executor: &Executor, ids: Option<Vec<#primary_key_ty>>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        #model::resolve_multiple(context, executor, ids, first, offset)
+                    }
+                }
+            } else {
+                quote! {
+                    fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<#primary_key_ty>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        #model::resolve_multiple(context, executor, Some(ids), first, offset)
+                    }
+                }
+            };
 
             quote! {
                 fn #singular(context: &#context_ty, id: #primary_key_ty) -> juniper::FieldResult<#graphql_type> {
                     #model::resolve_single(context, id)
                 }
 
-                fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<#primary_key_ty>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                    #model::resolve_multiple(context, executor, ids, first, offset)
-                }
+                #plural_resolver
             }
         })
         .collect::<Vec<proc_macro2::TokenStream>>();
@@ -84,15 +97,26 @@ pub fn generate_root_resolvers(
 
             }
 
-            fn resolve_multiple(context: &#context, executor: &juniper::Executor<#context, juniper::DefaultScalarValue>, ids: Vec<#id_type>, first: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                match #model::modify_query(
-                    #schema::table
-                        .filter(#schema::id.eq_any(&*ids))
+            fn resolve_multiple(
+                context: &#context,
+                executor: &juniper::Executor<#context, juniper::DefaultScalarValue>,
+                ids: Option<Vec<#id_type>>,
+                first: Option<i32>,
+                offset: Option<i32>,
+            ) -> juniper::FieldResult<Vec<#graphql_type>> {
+                let query = if let Some(ids) = ids {
+                    #schema::table.filter(#schema::id.eq_any(ids))
                         .limit(first.unwrap_or(10) as i64)
                         .offset(offset.unwrap_or(0) as i64)
-                        .into_boxed(),
-                    context
-                ) {
+                        .into_boxed()
+                } else {
+                    #schema::table.select(#schema::all_columns)
+                        .limit(first.unwrap_or(10) as i64)
+                        .offset(offset.unwrap_or(0) as i64)
+                        .into_boxed()
+                };
+
+                match #model::modify_query(query, context) {
                     Ok(query) => {
                         query
                             .load::<#model>(context.get_connection())

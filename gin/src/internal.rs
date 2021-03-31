@@ -31,7 +31,7 @@ pub trait __internal__RootResolver<C: JuniperContext + GinContext, T, Q, S> {
     fn resolve_multiple(
         context: &C,
         executor: &Executor<C, S>,
-        ids: Vec<T>,
+        ids: Option<Vec<T>>,
         first: Option<i32>,
         offset: Option<i32>,
     ) -> FieldResult<Vec<Q>>;
