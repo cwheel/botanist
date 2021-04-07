@@ -4,7 +4,7 @@ use syn::{DeriveInput, ItemImpl, Type};
 
 use crate::common;
 
-pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub fn botanist_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: ItemImpl = syn::parse(input).unwrap();
     let user_defined_mutations = &ast.items;
 
@@ -48,7 +48,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
         .collect::<Vec<proc_macro2::TokenStream>>();
 
         let gen = quote! {
-            use gin::internal::{__internal__CreateMutation, __internal__UpdateMutation, __internal__DeleteMutation};
+            use botanist::internal::{__internal__CreateMutation, __internal__UpdateMutation, __internal__DeleteMutation};
 
             #[juniper::object(Context = #context_ty)]
             impl #mutation_type {
@@ -60,7 +60,7 @@ pub fn gin_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream {
         return gen.into();
     }
 
-    panic!("Attempted to implement gin_mutation on invalid mutation type!");
+    panic!("Attempted to implement botanist_mutation on invalid mutation type!");
 }
 
 pub fn generate_create_mutation(

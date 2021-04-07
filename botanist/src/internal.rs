@@ -1,11 +1,11 @@
 #![allow(non_camel_case_types)]
 
-use crate::Context as GinContext;
+use crate::Context as BotanistContext;
 use diesel::result::Error;
 use juniper::Context as JuniperContext;
 use juniper::{DefaultScalarValue, Executor, FieldError, FieldResult, LookAheadSelection};
 
-pub trait __internal__Preloadable<C: JuniperContext + GinContext, T> {
+pub trait __internal__Preloadable<C: JuniperContext + BotanistContext, T> {
     fn preload_children(
         self_models: &Vec<T>,
         context: &C,
@@ -13,19 +13,19 @@ pub trait __internal__Preloadable<C: JuniperContext + GinContext, T> {
     ) -> Result<(), Error>;
 }
 
-pub trait __internal__CreateMutation<C: JuniperContext + GinContext, T, Q> {
+pub trait __internal__CreateMutation<C: JuniperContext + BotanistContext, T, Q> {
     fn create(context: &C, self_model: T) -> FieldResult<Q>;
 }
 
-pub trait __internal__UpdateMutation<C: JuniperContext + GinContext, T, Q> {
+pub trait __internal__UpdateMutation<C: JuniperContext + BotanistContext, T, Q> {
     fn update(context: &C, self_model: T) -> FieldResult<Q>;
 }
 
-pub trait __internal__DeleteMutation<C: JuniperContext + GinContext, T, Q> {
+pub trait __internal__DeleteMutation<C: JuniperContext + BotanistContext, T, Q> {
     fn delete(context: &C, id: T) -> FieldResult<Q>;
 }
 
-pub trait __internal__RootResolver<C: JuniperContext + GinContext, T, Q, S> {
+pub trait __internal__RootResolver<C: JuniperContext + BotanistContext, T, Q, S> {
     fn resolve_single(context: &C, id: T) -> FieldResult<Q>;
 
     fn resolve_multiple(
@@ -37,6 +37,6 @@ pub trait __internal__RootResolver<C: JuniperContext + GinContext, T, Q, S> {
     ) -> FieldResult<Vec<Q>>;
 }
 
-pub trait __internal__DefaultQueryModifier<T, C: JuniperContext + GinContext> {
+pub trait __internal__DefaultQueryModifier<T, C: JuniperContext + BotanistContext> {
     fn modify_query(query: T, context: &C) -> Result<T, FieldError>;
 }

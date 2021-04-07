@@ -8,10 +8,10 @@ use crate::macros::mutation::{
 };
 use crate::macros::query::generate_root_resolvers;
 
-pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
     let struct_name = &ast.ident;
-    let schema = common::schema_from_struct(&ast).expect("every gin_object must have a table name");
+    let schema = common::schema_from_struct(&ast).expect("every botanist_object must have a table name");
 
     let (_, params) = common::parse_ident_attributes(attrs);
     let context_ty = &params
@@ -307,7 +307,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let gen = quote! {
         use diesel::prelude::*;
 
-        use gin::internal::{
+        use botanist::internal::{
             __internal__CreateMutation,
             __internal__UpdateMutation,
             __internal__DeleteMutation,
@@ -315,8 +315,8 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             __internal__RootResolver,
             __internal__DefaultQueryModifier,
         };
-        use gin::macro_helpers;
-        use gin::Context as GinContext;
+        use botanist::macro_helpers;
+        use botanist::Context as BotanistContext;
         use std::cell::RefCell;
 
         use juniper;
@@ -329,7 +329,7 @@ pub fn gin_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         // Useful query type alias and default modifier (if the user isn't specifying one)
-        type #query_ty<'a> = #schema::BoxedQuery<'a, <#context_ty as GinContext>::DB>;
+        type #query_ty<'a> = #schema::BoxedQuery<'a, <#context_ty as BotanistContext>::DB>;
         #query_modifier
 
         // Juniper struct

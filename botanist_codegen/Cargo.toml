@@ -1,5 +1,5 @@
 [package]
-name = "gin_codegen"
+name = "botanist_codegen"
 version = "0.1.0"
 authors = ["Cameron Wheeler <cwheel@users.noreply.github.com>"]
 edition = "2018"

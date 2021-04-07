@@ -4,7 +4,7 @@ use syn::{ItemImpl, Type};
 
 use crate::common;
 
-pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: ItemImpl = syn::parse(input).unwrap();
     let user_defined_resolvers = &ast.items;
 
@@ -53,7 +53,7 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
         .collect::<Vec<proc_macro2::TokenStream>>();
 
         let gen = quote! {
-            use gin::internal::{__internal__Preloadable, __internal__RootResolver};
+            use botanist::internal::{__internal__Preloadable, __internal__RootResolver};
 
             #[juniper::object(Context = #context_ty)]
             impl #query_type {
@@ -65,7 +65,7 @@ pub fn gin_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
         return gen.into();
     }
 
-    panic!("Attempted to implement gin_query on invalid query type!");
+    panic!("Attempted to implement botanist_query on invalid query type!");
 }
 
 pub fn generate_root_resolvers(
