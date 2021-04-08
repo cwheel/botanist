@@ -16,4 +16,4 @@ jobs:
          node-version: '14'
      - run: npm install
      - run: npx npx vuepress build docs
-     - run: npx gh-pages -d docs/.vuepress/dist
+     - run: npx gh-pages -d docs/.vuepress/dist --user Github Actions <noreply@github.com>
