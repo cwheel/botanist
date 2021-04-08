@@ -6,6 +6,7 @@ module.exports = {
         editLinkText: 'Edit this page on GitHub',
         lastUpdated: 'Last Updated',
         repo: 'cwheel/botanist',
+        base: '/botanist/',
 
         sidebar: [
             ['/', 'Overview'],
