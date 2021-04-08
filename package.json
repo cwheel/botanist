@@ -1,0 +1,26 @@
+{
+  "name": "botanist",
+  "version": "0.0.0",
+  "description": "An experimental [Diesel](http://diesel.rs/) backed GraphQL ORM layer for [Juniper](https://github.com/graphql-rust/juniper).",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cwheel/botanist.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cwheel/botanist/issues"
+  },
+  "homepage": "https://github.com/cwheel/botanist#readme",
+  "dependencies": {
+    "vuepress": "^1.8.2",
+    "vuepress-theme-default-prefers-color-scheme": "^2.0.0"
+  }
+}
