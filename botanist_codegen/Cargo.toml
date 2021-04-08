@@ -9,7 +9,7 @@ repository = "https://github.com/cwheel/botanist"
 keywords = ["graphql", "orm", "diesel", "codegen"]
 description = "Code generation library for Botanist; Generate GraphQL schemas from Diesel models"
 readme = "../Readme.md"
-categories = ["web-programming", "databases"]
+categories = ["web-programming", "database"]
 
 [lib]
 proc-macro = true

@@ -9,7 +9,7 @@ repository = "https://github.com/cwheel/botanist"
 keywords = ["graphql", "orm", "diesel", "codegen"]
 description = "Generate GraphQL schemas from Diesel models"
 readme = "../Readme.md"
-categories = ["web-programming", "databases"]
+categories = ["web-programming", "database"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
