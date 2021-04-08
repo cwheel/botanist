@@ -3,6 +3,13 @@ name = "botanist"
 version = "0.1.0"
 authors = ["Cameron Wheeler <cwheel@users.noreply.github.com>"]
 edition = "2018"
+license = "MIT"
+documentation = "https://cwheel.github.io/botanist"
+repository = "https://github.com/cwheel/botanist"
+keywords = ["graphql", "orm", "diesel", "codegen"]
+description = "Generate GraphQL schemas from Diesel models"
+readme = "../Readme.md"
+categories = ["web-programming", "databases"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
