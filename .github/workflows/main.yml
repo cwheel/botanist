@@ -15,4 +15,5 @@ jobs:
        with:
          node-version: '14'
      - run: npm install
-     - run: node publish-docs.js
+     - run: npx npx vuepress build docs
+     - run: npx gh-pages -d docs/.vuepress/dist
