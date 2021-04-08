@@ -1,8 +1,9 @@
 module.exports = {
     title: '🌿 Botanist',
+    description: 'A Rust library for auto-magically generating GraphQL schemas from database models',
     theme: 'default-prefers-color-scheme',
     base: '/botanist/',
-    
+
     themeConfig: {
         editLinks: true,
         editLinkText: 'Edit this page on GitHub',
