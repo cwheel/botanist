@@ -1,12 +1,13 @@
 module.exports = {
     title: '🌿 Botanist',
     theme: 'default-prefers-color-scheme',
+    base: '/botanist/',
+    
     themeConfig: {
         editLinks: true,
         editLinkText: 'Edit this page on GitHub',
         lastUpdated: 'Last Updated',
         repo: 'cwheel/botanist',
-        base: '/botanist/',
 
         sidebar: [
             ['/', 'Overview'],
