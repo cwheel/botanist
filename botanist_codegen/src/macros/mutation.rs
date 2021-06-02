@@ -50,7 +50,7 @@ pub fn botanist_mutation(attrs: TokenStream, input: TokenStream) -> TokenStream 
         let gen = quote! {
             use botanist::internal::{__internal__CreateMutation, __internal__UpdateMutation, __internal__DeleteMutation};
 
-            #[juniper::object(Context = #context_ty)]
+            #[juniper::graphql_object(Context = #context_ty, scalar = juniper::DefaultScalarValue)]
             impl #mutation_type {
                 #( #user_defined_mutations )*
                 #( #mutations )*
@@ -110,9 +110,11 @@ pub fn generate_create_mutation(
 
             impl __internal__CreateMutation<Context, #create_mutation_struct, #gql_struct_name> for #create_mutation_struct {
                 fn create(context: &#context, self_model: #create_mutation_struct) -> juniper::FieldResult<#gql_struct_name> {
+                    let connection = context.get_connection();
+
                     diesel::insert_into(#schema::table)
                         .values(&self_model)
-                        .get_result(context.get_connection())
+                        .get_result(&connection)
                         .map_or_else(
                             |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                             |create_result: #struct_name| Ok(#gql_struct_name::from(create_result))
@@ -173,11 +175,13 @@ pub fn generate_update_mutation(
 
             impl __internal__UpdateMutation<#context, #update_mutation_struct, #gql_struct_name> for #update_mutation_struct {
                 fn update(context: &#context, self_model: #update_mutation_struct) -> juniper::FieldResult<#gql_struct_name> {
+                    let connection = context.get_connection();
+
                     diesel::update(
                         #schema::table.filter(#schema::id.eq(&self_model.id))
                     )
                     .set(&self_model)
-                    .get_result(context.get_connection())
+                    .get_result(&connection)
                     .map_or_else(
                         |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                         |update_result: #struct_name| Ok(#gql_struct_name::from(update_result))
@@ -198,10 +202,12 @@ pub fn generate_delete_mutation(
     quote! {
         impl __internal__DeleteMutation<#context, #id_type, #gql_struct_name> for #gql_struct_name {
             fn delete(context: &#context, id: #id_type) -> juniper::FieldResult<#gql_struct_name> {
+                let connection = context.get_connection();
+
                 diesel::delete(
                     #schema::table.filter(#schema::id.eq(id))
                 )
-                .get_result(context.get_connection())
+                .get_result(&connection)
                 .map_or_else(
                     |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                     |delete_result: #struct_name| Ok(#gql_struct_name::from(delete_result))

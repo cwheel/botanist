@@ -22,7 +22,7 @@ pub trait Context {
     type DB;
     type Connection;
 
-    fn get_connection<'a>(&'a self) -> &'a Self::Connection;
+    fn get_connection<'a>(&'a self) -> Self::Connection;
 }
 
 pub trait QueryModifier<T, R, C: Context> {

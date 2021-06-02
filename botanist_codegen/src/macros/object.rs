@@ -11,7 +11,8 @@ use crate::macros::query::generate_root_resolvers;
 pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
     let struct_name = &ast.ident;
-    let schema = common::schema_from_struct(&ast).expect("every botanist_object must have a table name");
+    let schema =
+        common::schema_from_struct(&ast).expect("every botanist_object must have a table name");
 
     let (_, params) = common::parse_ident_attributes(attrs);
     let context_ty = &params
@@ -65,7 +66,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     let preload_field = common::preload_field(ident);
 
                     Some(quote! {
-                        #preload_field: RefCell::new(None)
+                        #preload_field: Arc::new(Mutex::new(RefCell::new(None)))
                     })
                 }
                 common::TypeRelationship::HasOne(_, _, _) => {
@@ -73,7 +74,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
                     Some(quote! {
                         #ident: model.#ident,
-                        #preload_field: RefCell::new(None)
+                        #preload_field: Arc::new(Mutex::new(RefCell::new(None)))
                     })
                 }
                 common::TypeRelationship::Field => Some(quote! {
@@ -89,28 +90,45 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &#context_ty, executor: &Executor, limit: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                        if self.#preload_field.borrow().is_some() {
-                            Ok(self.#preload_field.replace_with(|_| None).unwrap())
-                        } else {
-                            #schema::table
-                                .filter(#forign_key.eq(&self.id))
-                                .limit(limit.unwrap_or(10) as i64)
-                                .offset(offset.unwrap_or(0) as i64)
-                                .load::<#model>(context.get_connection())
-                                .map_or_else(
-                                    |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
-                                    |models| {
-                                        let gql_models = models.iter().map(|model| #graphql_type::from(model.to_owned())).collect::<Vec<#graphql_type>>();
-                                        let preload_result = #graphql_type::preload_children(&gql_models, &context, &executor.look_ahead());
+                    pub fn #field(
+                        &self,
+                        context: &#context_ty,
+                        executor: &Executor<#context_ty, juniper::DefaultScalarValue>,
+                        limit: Option<i32>,
+                        offset: Option<i32>
+                    ) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        if let Ok(preload) = self.#preload_field.clone().lock() {
+                            if preload.borrow().is_some() {
+                                Ok(preload.replace_with(|_| None).unwrap())
+                            } else {
+                                #schema::table
+                                    .filter(#forign_key.eq(&self.id))
+                                    .limit(limit.unwrap_or(10) as i64)
+                                    .offset(offset.unwrap_or(0) as i64)
+                                    .load::<#model>(&context.get_connection())
+                                    .map_or_else(
+                                        |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                                        |models| {
+                                            let gql_models = models.iter().map(
+                                                |model| #graphql_type::from(model.to_owned())
+                                            ).collect::<Vec<#graphql_type>>();
 
-                                        if let Err(preload_err) = preload_result {
-                                            Err(juniper::FieldError::new(preload_err.to_string(), juniper::Value::null()))
-                                        } else {
-                                            Ok(gql_models)
+                                            let preload_result = #graphql_type::preload_children(&
+                                                gql_models,
+                                                &context,
+                                                &executor.look_ahead()
+                                            );
+
+                                            if let Err(preload_err) = preload_result {
+                                                Err(juniper::FieldError::new(preload_err.to_string(), juniper::Value::null()))
+                                            } else {
+                                                Ok(gql_models)
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                            }
+                        } else {
+                            Err(juniper::FieldError::new("Failed to acquire lock on preload field!", juniper::Value::null()))
                         }
                     }
                 }
@@ -119,17 +137,25 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 quote! {
-                    pub fn #field(&self, context: &#context_ty, executor: &Executor) -> juniper::FieldResult<#graphql_type> {
-                        if self.#preload_field.borrow().is_some() {
-                            Ok(self.#preload_field.replace_with(|_| None).unwrap())
+                    pub fn #field(
+                        &self,
+                        context: &#context_ty,
+                        executor: &Executor<#context_ty, juniper::DefaultScalarValue>
+                    ) -> juniper::FieldResult<#graphql_type> {
+                        if let Ok(preload) = self.#preload_field.clone().lock() {
+                            if preload.borrow().is_some() {
+                                Ok(preload.replace_with(|_| None).unwrap())
+                            } else {
+                                #schema::table
+                                    .filter(#schema::id.eq(&self.#field))
+                                    .get_result::<#model>(&context.get_connection())
+                                    .map_or_else(
+                                        |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
+                                        |model| Ok(#graphql_type::from(model.to_owned()))
+                                    )
+                            }
                         } else {
-                            #schema::table
-                                .filter(#schema::id.eq(&self.#field))
-                                .get_result::<#model>(context.get_connection())
-                                .map_or_else(
-                                    |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
-                                    |model| Ok(#graphql_type::from(model.to_owned()))
-                                )
+                            Err(juniper::FieldError::new("Failed to acquire lock on preload field!", juniper::Value::null()))
                         }
                     }
                 }
@@ -150,14 +176,14 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 Some(quote! {
-                    #preload_field: RefCell<Option<#graphql_type>>
+                    #preload_field: Arc<Mutex<RefCell<Option<#graphql_type>>>>
                 })
             }
             common::TypeRelationship::HasMany(_, _, model) => {
                 let (preload_field, graphql_type) = common::get_type_info(field, &model);
 
                 Some(quote! {
-                    #preload_field: RefCell<Option<Vec<#graphql_type>>>
+                    #preload_field: Arc<Mutex<RefCell<Option<Vec<#graphql_type>>>>>
                 })
             }
             _ => None,
@@ -210,16 +236,23 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
                                 let models = #schema::table
                                     .filter(#schema::id.eq_any(&*distinct_ids))
-                                    .load::<#model>(context.get_connection())?;
+                                    .load::<#model>(&context.get_connection())?;
 
-                                let gql_models = models.into_iter().map(|model| #graphql_type::from(model)).collect::<Vec<#graphql_type>>();
+                                let gql_models = models.into_iter().map(
+                                    |model| #graphql_type::from(model)
+                                ).collect::<Vec<#graphql_type>>();
+
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
-                                let distinct_id_to_gql_model: HashMap<&#id_ty, #graphql_type> = HashMap::from_iter(distinct_ids.iter().zip(gql_models.into_iter()));
+                                let distinct_id_to_gql_model: HashMap<&#id_ty, #graphql_type> = HashMap::from_iter(
+                                    distinct_ids.iter().zip(gql_models.into_iter())
+                                );
 
                                 for self_model in self_models.iter() {
                                     if let Some(child_model) = distinct_id_to_gql_model.get(&self_model.#field) {
-                                        self_model.#preload_field.replace_with(|_| Some(child_model.clone()));
+                                        if let Ok(preload) = self_model.#preload_field.clone().lock() {
+                                            preload.replace_with(|_| Some(child_model.clone()));
+                                        }
                                     }
                                 }
                             }
@@ -248,13 +281,16 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                                     .filter(#schema::#forign_key.eq_any(&*forign_key_ids))
                                     .limit(limit as i64)
                                     .offset(offset as i64)
-                                    .load::<#model>(context.get_connection())?;
+                                    .load::<#model>(&context.get_connection())?;
 
-                                let gql_models = models.into_iter().map(|model| #graphql_type::from(model)).collect::<Vec<#graphql_type>>();
+                                let gql_models = models.into_iter().map(
+                                    |model| #graphql_type::from(model)
+                                ).collect::<Vec<#graphql_type>>();
+
                                 #graphql_type::preload_children(&gql_models, &context, &look_ahead_selection)?;
 
                                 let mut forign_key_to_models: HashMap<#id_ty, Vec<#graphql_type>> = HashMap::new();
-                                
+
                                 for model in gql_models.into_iter() {
                                     forign_key_to_models
                                         .entry(model.#forign_key.clone())
@@ -264,9 +300,11 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
                                 for self_model in self_models.iter() {
                                     if let Some(child_models) = forign_key_to_models.get(&self_model.id) {
-                                        self_model.#preload_field.replace_with(
-                                            |_| Some(child_models.clone())
-                                        );
+                                        if let Ok(preload) = self_model.#preload_field.clone().lock() {
+                                            preload.replace_with(
+                                                |_| Some(child_models.clone())
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -318,9 +356,13 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         use botanist::macro_helpers;
         use botanist::Context as BotanistContext;
         use std::cell::RefCell;
+        use std::sync::Mutex;
+        use std::sync::Arc;
 
         use juniper;
+        use juniper::Executor;
         use juniper::LookAheadMethods;
+        use juniper::DefaultScalarValue;
 
         // Diesel model struct
         #( #attrs )*
@@ -339,7 +381,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             #( #preloader_fields, )*
         }
 
-        #[juniper::object(Context = Context, name = #gql_name)]
+        #[juniper::graphql_object(Context = Context, name = #gql_name, scalar = juniper::DefaultScalarValue)]
         impl #gql_struct_name {
             #( #resolvers )*
         }
@@ -353,7 +395,11 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl __internal__Preloadable<Context, #gql_struct_name> for #gql_struct_name {
-            fn preload_children(self_models: &Vec<#gql_struct_name>, context: &#context_ty, look_ahead: &juniper::LookAheadSelection<juniper::DefaultScalarValue>) -> Result<(), diesel::result::Error> {
+            fn preload_children(
+                self_models: &Vec<#gql_struct_name>,
+                context: &#context_ty,
+                look_ahead: &juniper::LookAheadSelection<juniper::DefaultScalarValue>
+            ) -> Result<(), diesel::result::Error> {
                 use std::collections::HashMap;
                 use std::iter::FromIterator;
 

@@ -55,7 +55,7 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
         let gen = quote! {
             use botanist::internal::{__internal__Preloadable, __internal__RootResolver};
 
-            #[juniper::object(Context = #context_ty)]
+            #[juniper::graphql_object(Context = #context_ty, scalar = juniper::DefaultScalarValue)]
             impl #query_type {
                 #( #user_defined_resolvers )*
                 #( #root_resolvers )*
@@ -85,8 +85,10 @@ pub fn generate_root_resolvers(
                         context
                     ) {
                         Ok(query) => {
+                            let connection = context.get_connection();
+
                             query
-                                .get_result::<#model>(context.get_connection())
+                                .get_result::<#model>(&connection)
                                 .map_or_else(
                                     |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                                     |model| Ok(#graphql_type::from(model.to_owned()))
@@ -118,8 +120,10 @@ pub fn generate_root_resolvers(
 
                 match #model::modify_query(query, context) {
                     Ok(query) => {
+                        let connection = context.get_connection();
+
                         query
-                            .load::<#model>(context.get_connection())
+                            .load::<#model>(&connection)
                             .map_or_else(
                                 |error| Err(juniper::FieldError::new(error.to_string(), juniper::Value::null())),
                                 |models| {
