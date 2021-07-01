@@ -57,6 +57,21 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             },
         );
 
+    let searchable_fields =
+        struct_fields.iter().filter_map(|(ident, ty, _)| match common::type_relationship(ty) {
+            common::TypeRelationship::HasMany(_, _, _) => None,
+            common::TypeRelationship::HasOne(_, _, _) => None,
+            common::TypeRelationship::Field => {
+                if let Type::Path(field_type) = ty {
+                    if field_type.path.segments.first().unwrap().ident.to_string() == "String" {
+                        return Some(ident.clone());
+                    }
+                }
+
+                None
+            },
+        });
+
     // Fields to implement std::From on the GQL struct for the model
     let tokenized_from_fields =
         common::tokenized_struct_fields_from_ast(
@@ -339,7 +354,8 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     // Query Root Resolvers
     let root_resolvers =
-        generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
+        // TOD01: pass list of fields
+        generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty, searchable_fields);
 
     let attrs = &ast.attrs;
     let gen = quote! {

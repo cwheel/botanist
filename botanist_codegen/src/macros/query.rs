@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use syn::{ItemImpl, Type};
@@ -28,16 +29,60 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let plural = rich_model.arguments.get("plural").map(|token| token.ident.clone()).unwrap_or(Ident::new(format!("{}s", singular).as_ref(), Span::call_site()));
             let can_fetch_all = rich_model.arguments.get("all").map(|token| token.ident == "true").unwrap_or(false);
 
+            let searchable = rich_model.arguments.get("searchable").map(|token| &token.arguments);
+            let searchable_args = searchable.map(
+                |args| args.keys().map(
+                    |key| {
+                        let ki = Ident::new(format!("like_{}", key).as_ref(), Span::call_site());
+
+                        quote! {
+                            #ki: Option<String>
+                        }
+                    }
+                ).collect()
+            ).unwrap_or(Vec::new());
+
+            let query_builders = searchable.map(
+                |args| args.keys().map(
+                    |key| {
+                        let ki = Ident::new(format!("like_{}", key).as_ref(), Span::call_site());
+
+                        quote! {
+                            if let Some(value) = #ki {
+                                search_query.insert(#key.to_string(), value);
+                            }
+                        }
+                    }
+                ).collect()
+            ).unwrap_or(Vec::new());
+
             let plural_resolver = if can_fetch_all {
                 quote! {
-                    fn #plural(context: &#context_ty, executor: &Executor, ids: Option<Vec<#primary_key_ty>>, limit: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                        #model::resolve_multiple(context, executor, ids, limit, offset)
+                    fn #plural(
+                        context: &#context_ty,
+                        executor: &Executor,
+                        ids: Option<Vec<#primary_key_ty>>,
+                        limit: Option<i32>,
+                        offset: Option<i32>,
+                        #( #searchable_args, )*
+                    ) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        let mut search_query = std::collections::HashMap::new();
+
+                        #( #query_builders )*
+                        
+                        #model::resolve_multiple(context, executor, ids, limit, offset, Some(search_query))
                     }
                 }
             } else {
                 quote! {
-                    fn #plural(context: &#context_ty, executor: &Executor, ids: Vec<#primary_key_ty>, limit: Option<i32>, offset: Option<i32>) -> juniper::FieldResult<Vec<#graphql_type>> {
-                        #model::resolve_multiple(context, executor, Some(ids), limit, offset)
+                    fn #plural(
+                        context: &#context_ty,
+                        executor: &Executor,
+                        ids: Vec<#primary_key_ty>,
+                        limit: Option<i32>,
+                        offset: Option<i32>
+                    ) -> juniper::FieldResult<Vec<#graphql_type>> {
+                        #model::resolve_multiple(context, executor, Some(ids), limit, offset, None)
                     }
                 }
             };
@@ -68,13 +113,24 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
     panic!("Attempted to implement botanist_query on invalid query type!");
 }
 
-pub fn generate_root_resolvers(
+pub fn generate_root_resolvers<'a, S: Iterator<Item=&'a Ident>>(
     model: &Ident,
     schema: &Ident,
     graphql_type: &Ident,
     context: &Ident,
     id_type: &Type,
+    searchable_fields: S
 ) -> proc_macro2::TokenStream {
+    let searchable = searchable_fields.map(|field| {
+        let field_str = field.to_string();
+
+        quote! {
+            if let Some(search_query) = search_query.get(#field_str) {
+                query = query.filter(#schema::#field.like(format!("%{}%", search_query)))
+            }
+        }
+    });
+
     quote! {
         impl __internal__RootResolver<#context, #id_type, #graphql_type, juniper::DefaultScalarValue> for #model {
             fn resolve_single(context: &Context, id: #id_type) -> juniper::FieldResult<#graphql_type> {
@@ -105,8 +161,9 @@ pub fn generate_root_resolvers(
                 ids: Option<Vec<#id_type>>,
                 limit: Option<i32>,
                 offset: Option<i32>,
+                search_query: Option<std::collections::HashMap<String, String>>
             ) -> juniper::FieldResult<Vec<#graphql_type>> {
-                let query = if let Some(ids) = ids {
+                let mut query = if let Some(ids) = ids {
                     #schema::table.filter(#schema::id.eq_any(ids))
                         .limit(limit.unwrap_or(10) as i64)
                         .offset(offset.unwrap_or(0) as i64)
@@ -117,6 +174,10 @@ pub fn generate_root_resolvers(
                         .offset(offset.unwrap_or(0) as i64)
                         .into_boxed()
                 };
+
+                if let Some(search_query) = search_query {
+                    #( #searchable )*
+                }
 
                 match #model::modify_query(query, context) {
                     Ok(query) => {

@@ -233,10 +233,32 @@ pub fn parse_ident_attributes_from_stream(
             }
         } else if let TokenTree::Group(group) = ident {
             if group.delimiter() == Delimiter::Parenthesis {
-                let (_, arguments) = parse_ident_attributes_from_stream(group.stream().into());
+                let (tuple_arguments, named_arguments) = parse_ident_attributes_from_stream(group.stream().into());
 
                 if let Some(last_token) = last_token {
-                    last_token.borrow_mut().arguments = arguments;
+                    last_token.borrow_mut().arguments = named_arguments;
+
+                    if in_expr {
+                        // If we're in an expression an we encounter a group, treat it as a tuple-like
+                        let last_attr_token = unnamed_values.pop().unwrap();
+                        let name = last_attr_token.borrow().ident.to_string();
+
+                        // We can only pass InternalAttributeToken's back, so make 'empty' InternalAttributeTokens
+                        // The hashmap keys end up being used as the tuple. In an ideal world, arguments becomes
+                        // a struct that can support named and unnamed arguments but I don't care enough to fix this
+                        // right now.
+                        let mut tup_map = HashMap::new();
+                        for argument in tuple_arguments {
+                            tup_map.insert(argument.borrow().ident.to_string(), Rc::new(RefCell::new(InternalAttributeToken {
+                                ident: Ident::new("_", Span::call_site()),
+                                arguments: HashMap::new()
+                            })));
+                        };
+
+                        last_token.borrow_mut().arguments = tup_map;
+
+                        named_values.insert(name, last_token);
+                    }
                 }
 
                 last_token = None;
