@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use syn::{ItemImpl, Type};
@@ -20,12 +19,13 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
             .expect("a primary key type must be specified")
             .ident;
 
-        let root_resolvers = query_models.map(|rich_model| {
+        let (root_resolvers, query_types): (Vec<_>, Vec<_>)  = query_models.map(|rich_model| {
             let model = &rich_model.ident;
             let graphql_type = common::gql_struct(&model);
             let model_name = model.to_string();
 
             let singular = Ident::new(common::lower_first(&model_name).as_ref(), Span::call_site());
+            let query_struct_name = Ident::new(format!("{}Query", &model_name).as_ref(), Span::call_site());
             let plural = rich_model.arguments.get("plural").map(|token| token.ident.clone()).unwrap_or(Ident::new(format!("{}s", singular).as_ref(), Span::call_site()));
             let can_fetch_all = rich_model.arguments.get("all").map(|token| token.ident == "true").unwrap_or(false);
 
@@ -33,28 +33,71 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let searchable_args = searchable.map(
                 |args| args.keys().map(
                     |key| {
-                        let ki = Ident::new(format!("like_{}", key).as_ref(), Span::call_site());
+                        let ki = Ident::new(key, Span::call_site());
 
                         quote! {
-                            #ki: Option<String>
+                            pub #ki: Option<String>
                         }
                     }
                 ).collect()
             ).unwrap_or(Vec::new());
 
-            let query_builders = searchable.map(
-                |args| args.keys().map(
-                    |key| {
-                        let ki = Ident::new(format!("like_{}", key).as_ref(), Span::call_site());
+            let query_struct = {
+                if searchable_args.is_empty() {
+                    None
+                } else {
+                    let query_field_inserters = searchable.map(
+                        |args| args.keys().map(
+                            |key| {
+                                let ki = Ident::new(&key, Span::call_site());
+        
+                                quote! {
+                                    if let Some(value) = &self.#ki {
+                                        search_query.insert(#key.to_string(), value.clone());
+                                    }
+                                }
+                            }
+                        ).collect()
+                    ).unwrap_or(Vec::new());
 
-                        quote! {
-                            if let Some(value) = #ki {
-                                search_query.insert(#key.to_string(), value);
+                    Some(quote! {
+                        #[derive(juniper::GraphQLInputObject)]
+                        pub struct #query_struct_name {
+                            #( #searchable_args )*
+                        }
+
+                        impl #query_struct_name {
+                            pub fn get_query(&self) -> std::collections::HashMap<String, String> {
+                                let mut search_query = std::collections::HashMap::new();
+
+                                #( #query_field_inserters )*
+
+                                search_query
                             }
                         }
-                    }
-                ).collect()
-            ).unwrap_or(Vec::new());
+                    })
+                }
+            };
+
+            let query_argument = {
+                if searchable_args.is_empty() {
+                    None
+                } else {
+                    Some(quote! {
+                        query: Option<#query_struct_name>
+                    })
+                }
+            };
+
+            let query_getter = {
+                if searchable_args.is_empty() {
+                    None
+                } else {
+                    Some(quote! {
+                        query.map(|query| query.get_query())
+                    })
+                }
+            };
 
             let plural_resolver = if can_fetch_all {
                 quote! {
@@ -64,13 +107,9 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                         ids: Option<Vec<#primary_key_ty>>,
                         limit: Option<i32>,
                         offset: Option<i32>,
-                        #( #searchable_args, )*
+                        #query_argument,
                     ) -> juniper::FieldResult<Vec<#graphql_type>> {
-                        let mut search_query = std::collections::HashMap::new();
-
-                        #( #query_builders )*
-                        
-                        #model::resolve_multiple(context, executor, ids, limit, offset, Some(search_query))
+                        #model::resolve_multiple(context, executor, ids, limit, offset, #query_getter)
                     }
                 }
             } else {
@@ -87,18 +126,20 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
             };
 
-            quote! {
+            (quote! {
                 fn #singular(context: &#context_ty, id: #primary_key_ty) -> juniper::FieldResult<#graphql_type> {
                     #model::resolve_single(context, id)
                 }
 
                 #plural_resolver
-            }
+            }, query_struct)
         })
-        .collect::<Vec<proc_macro2::TokenStream>>();
+        .unzip();//.collect::<Vec<(proc_macro2::TokenStream, Option<proc_macro2::TokenStream>)>>();
 
         let gen = quote! {
             use botanist::internal::{__internal__Preloadable, __internal__RootResolver};
+
+            #( #query_types )*
 
             #[juniper::graphql_object(Context = #context_ty, scalar = juniper::DefaultScalarValue)]
             impl #query_type {

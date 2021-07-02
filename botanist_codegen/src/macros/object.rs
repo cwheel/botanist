@@ -26,6 +26,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let gql_name = struct_name.to_string();
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
+    let search_query_struct_name = Ident::new(format!("{}Query", struct_name).as_ref(), Span::call_site());
     let query_ty = Ident::new(format!("{}Query", struct_name).as_ref(), Span::call_site());
 
     let struct_fields = common::typed_struct_fields_from_ast(&ast);
@@ -71,6 +72,10 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 None
             },
         });
+
+    let tokenized_searchable_fields = searchable_fields.clone().map(|field| quote! {
+        #field: String
+    });
 
     // Fields to implement std::From on the GQL struct for the model
     let tokenized_from_fields =
