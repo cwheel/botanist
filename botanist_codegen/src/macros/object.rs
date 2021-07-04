@@ -375,6 +375,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             __internal__DefaultQueryModifier,
         };
         use botanist::macro_helpers;
+        use botanist::text_search::{matches, distance, to_tsquery, to_tsvector};
         use botanist::Context as BotanistContext;
         use std::cell::RefCell;
         use std::sync::Mutex;

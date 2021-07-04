@@ -1,8 +1,14 @@
+#[macro_use]
+extern crate diesel;
+
 use juniper::FieldError;
 use std::marker::PhantomData;
 
 pub mod internal;
 pub mod macro_helpers;
+
+#[cfg(feature = "postgres_text_search")]
+pub mod text_search;
 
 #[derive(Debug, Clone)]
 pub struct HasOne<T, S, M> {

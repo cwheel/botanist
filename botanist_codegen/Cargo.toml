@@ -19,3 +19,6 @@ syn = "1.0.23"
 quote = "1.0.6"
 proc-macro2 = "1.0.15"
 juniper = "0.15.5"
+
+[features]
+postgres_text_search = []

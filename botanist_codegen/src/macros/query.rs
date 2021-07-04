@@ -166,8 +166,26 @@ pub fn generate_root_resolvers<'a, S: Iterator<Item=&'a Ident>>(
         let field_str = field.to_string();
 
         quote! {
-            if let Some(search_query) = search_query.get(#field_str) {
-                query = query.filter(#schema::#field.like(format!("%{}%", search_query)))
+            if let Some(search_query) = search_query.get(#field_str) { 
+                #[cfg(not(feature = "postgres_text_search"))] {
+                    query = query.or_filter(#schema::#field.like(format!("%{}%", search_query)));
+                }
+
+                #[cfg(feature = "postgres_text_search")] {
+                    query = query.or_filter(
+                        // Results must contain a prefix match at any position
+                        matches(
+                            to_tsvector(#schema::#field),
+                            to_tsquery(format!("{}:*", search_query))
+                        )
+                    ).then_order_by(
+                        // Results that begin with the prefix are prioritized
+                        #schema::#field.ilike(format!("{}%", search_query)).desc()
+                    ).then_order_by(
+                        // Then order results by tgrm distance
+                        distance(#schema::#field, search_query.clone()).asc()
+                    )
+                }
             }
         }
     });
