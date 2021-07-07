@@ -26,7 +26,6 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let gql_name = struct_name.to_string();
     let gql_struct_name = Ident::new(format!("{}GQL", struct_name).as_ref(), Span::call_site());
-    let search_query_struct_name = Ident::new(format!("{}Query", struct_name).as_ref(), Span::call_site());
     let query_ty = Ident::new(format!("{}Query", struct_name).as_ref(), Span::call_site());
 
     let struct_fields = common::typed_struct_fields_from_ast(&ast);
@@ -58,24 +57,23 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             },
         );
 
+    // Fields eligable for full-text search
     let searchable_fields =
         struct_fields.iter().filter_map(|(ident, ty, _)| match common::type_relationship(ty) {
             common::TypeRelationship::HasMany(_, _, _) => None,
             common::TypeRelationship::HasOne(_, _, _) => None,
             common::TypeRelationship::Field => {
                 if let Type::Path(field_type) = ty {
-                    if field_type.path.segments.first().unwrap().ident.to_string() == "String" {
-                        return Some(ident.clone());
+                    if let Some(segment) = field_type.path.segments.first() {
+                        if segment.ident.to_string() == "String" {
+                            return Some(ident.clone());
+                        }
                     }
                 }
 
                 None
             },
         });
-
-    let tokenized_searchable_fields = searchable_fields.clone().map(|field| quote! {
-        #field: String
-    });
 
     // Fields to implement std::From on the GQL struct for the model
     let tokenized_from_fields =
@@ -375,7 +373,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             __internal__DefaultQueryModifier,
         };
         use botanist::macro_helpers;
-        use botanist::text_search::{matches, distance, to_tsquery, to_tsvector};
+        use botanist::diesel_extensions::text_search;
         use botanist::Context as BotanistContext;
         use std::cell::RefCell;
         use std::sync::Mutex;
