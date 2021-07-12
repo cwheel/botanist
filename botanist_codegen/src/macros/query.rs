@@ -134,7 +134,7 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 #plural_resolver
             }, query_struct)
         })
-        .unzip();//.collect::<Vec<(proc_macro2::TokenStream, Option<proc_macro2::TokenStream>)>>();
+        .unzip();
 
         let gen = quote! {
             use botanist::internal::{__internal__Preloadable, __internal__RootResolver};
@@ -165,26 +165,28 @@ pub fn generate_root_resolvers<'a, S: Iterator<Item=&'a Ident>>(
     let searchable = searchable_fields.map(|field| {
         let field_str = field.to_string();
 
-        quote! {
-            if let Some(search_query) = search_query.get(#field_str) { 
-                #[cfg(not(feature = "postgres_prefix_search"))] {
-                    query = query.or_filter(#schema::#field.like(format!("%{}%", search_query)));
-                }
-
-                #[cfg(feature = "postgres_prefix_search")] {
+        if cfg!(feature = "postgres_prefix_search") {
+            quote! {
+                if let Some(search_query) = search_query.get(#field_str) { 
                     query = query.or_filter(
                         // Results must contain a prefix match at any position
-                        text_search::matches(
-                            text_search::to_tsvector(#schema::#field),
-                            text_search::to_tsquery(format!("{}:*", search_query))
+                        prefix_search::matches(
+                            prefix_search::to_tsvector(#schema::#field),
+                            prefix_search::to_tsquery(format!("{}:*", search_query))
                         )
                     ).then_order_by(
                         // Results that begin with the prefix are prioritized
                         #schema::#field.ilike(format!("{}%", search_query)).desc()
                     ).then_order_by(
-                        // Then order results by tgrm distance
-                        text_search::distance(#schema::#field, search_query.clone()).asc()
-                    )
+                        // The closer the prefix is to the start of the string, the higher it ranks
+                        prefix_search::position(#schema::#field, search_query.clone()).asc()
+                    );
+                }
+            }
+        } else {
+            quote! {
+                if let Some(search_query) = search_query.get(#field_str) { 
+                    query = query.or_filter(#schema::#field.ilike(format!("%{}%", search_query)));
                 }
             }
         }

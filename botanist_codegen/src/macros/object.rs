@@ -357,7 +357,6 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     // Query Root Resolvers
     let root_resolvers =
-        // TOD01: pass list of fields
         generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty, searchable_fields);
 
     let attrs = &ast.attrs;
@@ -373,7 +372,7 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
             __internal__DefaultQueryModifier,
         };
         use botanist::macro_helpers;
-        use botanist::diesel_extensions::text_search;
+        use botanist::diesel_extensions::prefix_search;
         use botanist::Context as BotanistContext;
         use std::cell::RefCell;
         use std::sync::Mutex;
