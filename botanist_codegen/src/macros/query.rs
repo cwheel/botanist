@@ -29,8 +29,10 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let plural = rich_model.arguments.get("plural").map(|token| token.ident.clone()).unwrap_or(Ident::new(format!("{}s", singular).as_ref(), Span::call_site()));
             let can_fetch_all = rich_model.arguments.get("all").map(|token| token.ident == "true").unwrap_or(false);
 
-            let searchable = rich_model.arguments.get("searchable").map(|token| &token.arguments);
-            let searchable_args = searchable.map(
+            let searchable_fields = rich_model.arguments.get("searchable").map(|token| &token.arguments);
+
+            // Generate the searchable fields of the query type
+            let searchable_args = searchable_fields.map(
                 |args| args.keys().map(
                     |key| {
                         let ki = Ident::new(key, Span::call_site());
@@ -42,11 +44,18 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 ).collect()
             ).unwrap_or(Vec::new());
 
+            // Generate the actual implementation of the query type
             let query_struct = {
                 if searchable_args.is_empty() {
                     None
                 } else {
-                    let query_field_inserters = searchable.map(
+                    // Generate the contents of the get_query function. get_query is used to cross the boundary between
+                    // the user defined query structure and the underlying query generator. The query generator accepts
+                    // all possible (text) fields while the user query type will only accept fields specified by the user.
+
+                    // Thus, to 'reduce' from the query type (unknown at static query generation time) to something we can
+                    // extract values from at runtime, we provide get_query to provide a HashMap of the set query args.
+                    let query_field_inserters = searchable_fields.map(
                         |args| args.keys().map(
                             |key| {
                                 let ki = Ident::new(&key, Span::call_site());
@@ -79,6 +88,8 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
             };
 
+            // Optional query argument to add on to the plural resolver. If no fields are searchable, nothing will
+            // be generated here
             let query_argument = {
                 if searchable_args.is_empty() {
                     None
@@ -89,6 +100,7 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
             };
 
+            // Pass the query (as a HashMap, not as a GraphQL type struct) to the underlying resolve_multiple function
             let query_getter = {
                 if searchable_args.is_empty() {
                     None
@@ -99,6 +111,7 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
             };
 
+            // Types must be marked as 'all' (all their records can be fetched) in order to enable field searching
             let plural_resolver = if can_fetch_all {
                 quote! {
                     fn #plural(
@@ -162,7 +175,9 @@ pub fn generate_root_resolvers<'a, S: Iterator<Item = &'a Ident>>(
     id_type: &Type,
     searchable_fields: S,
 ) -> proc_macro2::TokenStream {
-    let searchable = searchable_fields.map(|field| {
+    // Generate a case for extending the query with every eligible field that can support text searching
+    // These query extensions only apply if the user specifies the field in question is searchable
+    let search_filters = searchable_fields.map(|field| {
         let field_str = field.to_string();
 
         if cfg!(feature = "postgres_prefix_search") {
@@ -237,7 +252,7 @@ pub fn generate_root_resolvers<'a, S: Iterator<Item = &'a Ident>>(
                 };
 
                 if let Some(search_query) = search_query {
-                    #( #searchable )*
+                    #( #search_filters )*
                 }
 
                 match #model::modify_query(query, context) {
