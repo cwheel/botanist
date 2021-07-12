@@ -5,9 +5,9 @@ extern crate diesel;
 use juniper::FieldError;
 use std::marker::PhantomData;
 
+pub mod diesel_extensions;
 pub mod internal;
 pub mod macro_helpers;
-pub mod diesel_extensions;
 
 #[derive(Debug, Clone)]
 pub struct HasOne<T, S, M> {

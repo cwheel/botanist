@@ -154,20 +154,20 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
     panic!("Attempted to implement botanist_query on invalid query type!");
 }
 
-pub fn generate_root_resolvers<'a, S: Iterator<Item=&'a Ident>>(
+pub fn generate_root_resolvers<'a, S: Iterator<Item = &'a Ident>>(
     model: &Ident,
     schema: &Ident,
     graphql_type: &Ident,
     context: &Ident,
     id_type: &Type,
-    searchable_fields: S
+    searchable_fields: S,
 ) -> proc_macro2::TokenStream {
     let searchable = searchable_fields.map(|field| {
         let field_str = field.to_string();
 
         if cfg!(feature = "postgres_prefix_search") {
             quote! {
-                if let Some(search_query) = search_query.get(#field_str) { 
+                if let Some(search_query) = search_query.get(#field_str) {
                     query = query.or_filter(
                         // Results must contain a prefix match at any position
                         prefix_search::matches(
@@ -185,7 +185,7 @@ pub fn generate_root_resolvers<'a, S: Iterator<Item=&'a Ident>>(
             }
         } else {
             quote! {
-                if let Some(search_query) = search_query.get(#field_str) { 
+                if let Some(search_query) = search_query.get(#field_str) {
                     query = query.or_filter(#schema::#field.ilike(format!("%{}%", search_query)));
                 }
             }

@@ -59,21 +59,23 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     // Fields eligable for full-text search
     let searchable_fields =
-        struct_fields.iter().filter_map(|(ident, ty, _)| match common::type_relationship(ty) {
-            common::TypeRelationship::HasMany(_, _, _) => None,
-            common::TypeRelationship::HasOne(_, _, _) => None,
-            common::TypeRelationship::Field => {
-                if let Type::Path(field_type) = ty {
-                    if let Some(segment) = field_type.path.segments.first() {
-                        if segment.ident.to_string() == "String" {
-                            return Some(ident.clone());
+        struct_fields
+            .iter()
+            .filter_map(|(ident, ty, _)| match common::type_relationship(ty) {
+                common::TypeRelationship::HasMany(_, _, _) => None,
+                common::TypeRelationship::HasOne(_, _, _) => None,
+                common::TypeRelationship::Field => {
+                    if let Type::Path(field_type) = ty {
+                        if let Some(segment) = field_type.path.segments.first() {
+                            if segment.ident.to_string() == "String" {
+                                return Some(ident.clone());
+                            }
                         }
                     }
-                }
 
-                None
-            },
-        });
+                    None
+                }
+            });
 
     // Fields to implement std::From on the GQL struct for the model
     let tokenized_from_fields =
@@ -356,8 +358,14 @@ pub fn botanist_object(attrs: TokenStream, input: TokenStream) -> TokenStream {
         generate_delete_mutation(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty);
 
     // Query Root Resolvers
-    let root_resolvers =
-        generate_root_resolvers(&struct_name, &schema, &gql_struct_name, &context_ty, &id_ty, searchable_fields);
+    let root_resolvers = generate_root_resolvers(
+        &struct_name,
+        &schema,
+        &gql_struct_name,
+        &context_ty,
+        &id_ty,
+        searchable_fields,
+    );
 
     let attrs = &ast.attrs;
     let gen = quote! {

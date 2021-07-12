@@ -2,13 +2,13 @@
 pub mod prefix_search {
     use std::marker::PhantomData;
 
+    use diesel::expression::{AppearsOnTable, AsExpression, Expression};
     use diesel::pg::Pg;
-    use diesel::expression::{Expression, AsExpression, AppearsOnTable};
-    use diesel::sql_types::{Float, Text, Bool, Integer};
-    use diesel::query_builder::{QueryFragment, AstPass, Query, AsQuery};
-    use diesel::types::{SingleValue};
-    use diesel::result::{QueryResult};
+    use diesel::query_builder::{AsQuery, AstPass, Query, QueryFragment};
+    use diesel::result::QueryResult;
     use diesel::serialize::ToSql;
+    use diesel::sql_types::{Bool, Float, Integer, Text};
+    use diesel::types::SingleValue;
 
     // https://www.postgresql.org/docs/current/textsearch-intro.html#TEXTSEARCH-MATCHING
     sql_function!(to_tsquery, TextSearchQuery, (query: Text) -> Text);
@@ -17,7 +17,8 @@ pub mod prefix_search {
     // https://www.postgresql.org/docs/current/textsearch-intro.html#TEXTSEARCH-MATCHING
     diesel_infix_operator!(Matches, " @@ ", Bool, backend: Pg);
 
-    pub fn matches<T, U>(left: T, right: U) -> Matches<T, U::Expression> where
+    pub fn matches<T, U>(left: T, right: U) -> Matches<T, U::Expression>
+    where
         T: Expression,
         U: AsExpression<T::SqlType>,
     {
@@ -31,11 +32,14 @@ pub mod prefix_search {
         _marker: PhantomData<T>,
     }
 
-    pub fn position<T, E: AsExpression<T>>(expr: E, substring: String) -> Position<T, E::Expression> {
+    pub fn position<T, E: AsExpression<T>>(
+        expr: E,
+        substring: String,
+    ) -> Position<T, E::Expression> {
         Position {
             expr: expr.as_expression(),
             substring,
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 

@@ -1,10 +1,10 @@
 #![allow(non_camel_case_types)]
 
 use crate::Context as BotanistContext;
-use std::collections::HashMap;
 use diesel::result::Error;
 use juniper::Context as JuniperContext;
 use juniper::{DefaultScalarValue, Executor, FieldError, FieldResult, LookAheadSelection};
+use std::collections::HashMap;
 
 pub trait __internal__Preloadable<C: JuniperContext + BotanistContext, T> {
     fn preload_children(
@@ -35,7 +35,7 @@ pub trait __internal__RootResolver<C: JuniperContext + BotanistContext, T, Q, S>
         ids: Option<Vec<T>>,
         limit: Option<i32>,
         offset: Option<i32>,
-        search_query: Option<HashMap<String, String>>
+        search_query: Option<HashMap<String, String>>,
     ) -> FieldResult<Vec<Q>>;
 }
 

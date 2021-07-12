@@ -233,7 +233,8 @@ pub fn parse_ident_attributes_from_stream(
             }
         } else if let TokenTree::Group(group) = ident {
             if group.delimiter() == Delimiter::Parenthesis {
-                let (tuple_arguments, named_arguments) = parse_ident_attributes_from_stream(group.stream().into());
+                let (tuple_arguments, named_arguments) =
+                    parse_ident_attributes_from_stream(group.stream().into());
 
                 if let Some(last_token) = last_token {
                     last_token.borrow_mut().arguments = named_arguments;
@@ -249,11 +250,14 @@ pub fn parse_ident_attributes_from_stream(
                         // right now.
                         let mut tup_map = HashMap::new();
                         for argument in tuple_arguments {
-                            tup_map.insert(argument.borrow().ident.to_string(), Rc::new(RefCell::new(InternalAttributeToken {
-                                ident: Ident::new("_", Span::call_site()),
-                                arguments: HashMap::new()
-                            })));
-                        };
+                            tup_map.insert(
+                                argument.borrow().ident.to_string(),
+                                Rc::new(RefCell::new(InternalAttributeToken {
+                                    ident: Ident::new("_", Span::call_site()),
+                                    arguments: HashMap::new(),
+                                })),
+                            );
+                        }
 
                         last_token.borrow_mut().arguments = tup_map;
 
