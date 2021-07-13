@@ -25,9 +25,31 @@ pub fn botanist_query(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let model_name = model.to_string();
 
             let singular = Ident::new(common::lower_first(&model_name).as_ref(), Span::call_site());
-            let query_struct_name = Ident::new(format!("{}Query", &model_name).as_ref(), Span::call_site());
-            let plural = rich_model.arguments.get("plural").map(|token| token.ident.clone()).unwrap_or(Ident::new(format!("{}s", singular).as_ref(), Span::call_site()));
-            let can_fetch_all = rich_model.arguments.get("all").map(|token| token.ident == "true").unwrap_or(false);
+
+            let plural = rich_model.arguments.get("plural").map(
+                |token| token.ident.clone()
+            ).unwrap_or(
+                Ident::new(
+                    format!("{}s", singular).as_ref(),
+                    Span::call_site()
+                )
+            );
+
+            let can_fetch_all = rich_model.arguments.get("all").map(
+                |token| token.ident == "true"
+            ).unwrap_or(false);
+
+            let query_struct_name = Ident::new(
+                format!(
+                    "{}Query",
+                    rich_model.arguments.get("plural").map(
+                        |token| token.ident.to_string()
+                    ).unwrap_or(
+                        format!("{}s", &model_name)
+                    )
+                ).as_ref(),
+                Span::call_site()
+            );
 
             let searchable_fields = rich_model.arguments.get("searchable").map(|token| &token.arguments);
 
