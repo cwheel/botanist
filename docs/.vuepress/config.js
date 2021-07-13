@@ -15,7 +15,7 @@ module.exports = {
             {
                 title: 'Getting Started',
                 collapsable: false,
-                children: [ 'intro/basics', 'intro/schema' ]
+                children: [ 'intro/basics', 'intro/schema', 'intro/text_search' ]
             },
             {
                 title: 'Relationships',
