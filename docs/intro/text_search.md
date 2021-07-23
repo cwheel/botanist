@@ -19,7 +19,7 @@ In your `botanist_query` declaration, update your type to contain a `searchable`
 ```
 
 ::: tip Note
-It's important to note that you must set the `all` key to `true` here. This will enable your models to be fetched without knowing the exact ID. This is enforced for searching as models are returned based on field matches instead of ID matches.
+You must set the `all` key to `true` here. This will enable your models to be fetched without knowing the exact ID. This is enforced for searching as models are returned based on field matches instead of ID matches.
 :::
 
 If you fire up your application and inspect your schema, you'll see that the multi-select query for `Hero` (i.e `heros(...)`) now has an optional `query` argument:
@@ -58,7 +58,7 @@ If you're using Postgres as your backing database, it's recommended that you rea
 These queries are *only* generated for Postgres. This section will not work on for any other database.
 :::
 
-As Postgres supports Full Text Search, Botanist can generate some more useful queries when operating on a Postgres database. In particular, Botanist contains a basic prefix match search implementation. To get started with prefix search, enable the `postgres_prefix_search` feature for both `botanist` and `botanist_codegen`. Queries will now be perform prefix matching and will not rely exclusively on case-insensitive like (`ILIKE`) anymore.
+As Postgres supports full text search, Botanist can generate some more useful queries when operating on a Postgres database. In particular, Botanist contains a basic prefix match search implementation. To get started with prefix search, enable the `postgres_prefix_search` feature for both `botanist` and `botanist_codegen`. Queries will now perform prefix matching and will not rely exclusively on case-insensitive like (`ILIKE`) anymore.
 
 In general, Botanist will utilize the `to_tsvector`, `to_tsquery` and `position` functions with the `@@` (match) operator. A query on a single field will look something like:
 
